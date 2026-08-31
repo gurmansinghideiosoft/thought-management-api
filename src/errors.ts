@@ -21,3 +21,8 @@ export class AppError extends Error {
     Error.captureStackTrace?.(this, AppError);
   }
 }
+
+export const badRequest = (message: string): AppError => new AppError(message, 400);
+export const notFoundError = (message = 'Not found'): AppError =>
+  new AppError(message, 404);
+export const conflict = (message: string): AppError => new AppError(message, 409);

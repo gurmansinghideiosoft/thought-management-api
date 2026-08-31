@@ -9,10 +9,32 @@ import 'dotenv/config';
  */
 
 type NodeEnv = 'development' | 'test' | 'production';
+type StorageDriver = 's3' | 'memory';
 
 interface RateLimitConfig {
   windowMs: number;
   max: number;
+}
+
+interface S3Config {
+  region: string;
+  bucket: string;
+  /** Custom endpoint for S3-compatible services (MinIO, R2, …). */
+  endpoint: string | undefined;
+  /** Path-style URLs (`endpoint/bucket/key`) — needed by most S3-compatibles. */
+  forcePathStyle: boolean;
+}
+
+interface StorageConfig {
+  driver: StorageDriver;
+  /** Present only when `driver === 's3'`. */
+  s3: S3Config | undefined;
+}
+
+interface UploadsConfig {
+  maxBytes: number;
+  /** S3 key prefix for uploaded files, e.g. `thoughts/`. */
+  keyPrefix: string;
 }
 
 interface Config {
@@ -24,6 +46,9 @@ interface Config {
   readonly trustProxy: boolean;
   readonly corsOrigins: readonly string[];
   readonly rateLimit: Readonly<RateLimitConfig>;
+  readonly mongo: Readonly<{ uri: string }>;
+  readonly storage: Readonly<StorageConfig>;
+  readonly uploads: Readonly<UploadsConfig>;
 }
 
 const ALLOWED_ENVS = ['development', 'test', 'production'] as const;
@@ -35,6 +60,8 @@ const toInt = (value: string | undefined, fallback: number): number => {
   const parsed = Number.parseInt(value ?? '', 10);
   return Number.isNaN(parsed) ? fallback : parsed;
 };
+
+const toBool = (value: string | undefined): boolean => value === 'true';
 
 const parseList = (value: string | undefined): string[] =>
   (value ?? '')
@@ -51,6 +78,7 @@ if (!isNodeEnv(rawEnv)) {
   errors.push(`NODE_ENV must be one of ${ALLOWED_ENVS.join(', ')} (got "${rawEnv}")`);
 }
 const env: NodeEnv = isNodeEnv(rawEnv) ? rawEnv : 'development';
+const isTest = env === 'test';
 
 const port = toInt(process.env.PORT, 3000);
 if (port < 1 || port > 65535) {
@@ -68,6 +96,43 @@ if (rateLimit.max < 1) {
   errors.push('RATE_LIMIT_MAX must be at least 1');
 }
 
+// MongoDB — required. Tests inject their own URI via mongodb-memory-server, so
+// only demand it outside the test runner.
+const mongoUri = process.env.MONGODB_URI ?? '';
+if (!isTest && mongoUri === '') {
+  errors.push('MONGODB_URI is required');
+}
+
+// Storage — defaults to the in-memory driver so local dev and tests need no S3.
+const rawDriver = process.env.STORAGE_DRIVER ?? 'memory';
+if (rawDriver !== 's3' && rawDriver !== 'memory') {
+  errors.push(`STORAGE_DRIVER must be "s3" or "memory" (got "${rawDriver}")`);
+}
+const driver: StorageDriver = isTest ? 'memory' : rawDriver === 's3' ? 's3' : 'memory';
+
+let s3: S3Config | undefined;
+if (driver === 's3') {
+  const region = process.env.S3_REGION ?? '';
+  const bucket = process.env.S3_BUCKET ?? '';
+  if (region === '') errors.push('S3_REGION is required when STORAGE_DRIVER=s3');
+  if (bucket === '') errors.push('S3_BUCKET is required when STORAGE_DRIVER=s3');
+  s3 = {
+    region,
+    bucket,
+    endpoint: process.env.S3_ENDPOINT || undefined,
+    forcePathStyle: toBool(process.env.S3_FORCE_PATH_STYLE),
+  };
+}
+
+const uploads: UploadsConfig = {
+  // Small cap under the test runner so oversize-upload tests don't allocate 25 MiB.
+  maxBytes: toInt(process.env.UPLOAD_MAX_BYTES, isTest ? 64 * 1024 : 25 * 1024 * 1024),
+  keyPrefix: process.env.UPLOAD_KEY_PREFIX ?? 'thoughts/',
+};
+if (uploads.maxBytes < 1024) {
+  errors.push('UPLOAD_MAX_BYTES must be at least 1024');
+}
+
 if (errors.length > 0) {
   throw new Error(`Invalid configuration:\n  - ${errors.join('\n  - ')}`);
 }
@@ -78,14 +143,17 @@ const config: Config = Object.freeze({
   env,
   isProduction: env === 'production',
   isDevelopment: env === 'development',
-  isTest: env === 'test',
+  isTest,
   port,
   // Enable only behind a real reverse proxy; otherwise clients can spoof
   // X-Forwarded-For and bypass the rate limiter.
-  trustProxy: process.env.TRUST_PROXY === 'true',
+  trustProxy: toBool(process.env.TRUST_PROXY),
   // Empty => same-origin only, the safe default.
   corsOrigins: Object.freeze(parseList(process.env.CORS_ORIGIN)),
   rateLimit: Object.freeze(rateLimit),
+  mongo: Object.freeze({ uri: mongoUri }),
+  storage: Object.freeze({ driver, s3: s3 ? Object.freeze(s3) : undefined }),
+  uploads: Object.freeze(uploads),
 });
 
 export default config;

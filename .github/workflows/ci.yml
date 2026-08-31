@@ -28,5 +28,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The test suite runs a real mongod via mongodb-memory-server. Cache the
+      # downloaded binary so it isn't re-fetched on every run.
+      - name: Cache mongodb-memory-server binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: mongodb-binaries-${{ runner.os }}-
+
       - name: Run the full gate (format, lint, typecheck, test, build)
         run: npm run check

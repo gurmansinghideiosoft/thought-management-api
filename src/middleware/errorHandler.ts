@@ -1,4 +1,7 @@
 import type { ErrorRequestHandler, RequestHandler } from 'express';
+import { MulterError } from 'multer';
+import { Error as MongooseError } from 'mongoose';
+import { ZodError } from 'zod';
 
 import config from '../config/index.ts';
 import { AppError } from '../errors.ts';
@@ -13,26 +16,77 @@ export const notFound: RequestHandler = (req, _res, next) => {
   next(new AppError(`Route not found: ${req.method} ${req.originalUrl}`, 404));
 };
 
-interface ErrorBody {
-  error: {
-    message: string;
-    stack?: string;
-  };
+interface NormalizedError {
+  status: number;
+  message: string;
+  /** Field-level validation problems, when we have them. */
+  details?: unknown;
 }
 
-/** Pull an HTTP status off an unknown thrown value, defaulting to 500. */
-const statusOf = (err: unknown): number => {
+/**
+ * Turn any thrown value into a status + client-safe message. Library errors
+ * (Zod, Mongoose, Multer) are translated here so route handlers can just
+ * `throw` and stay clean.
+ */
+const normalize = (err: unknown): NormalizedError => {
   if (err instanceof AppError) {
-    return err.status;
+    return { status: err.status, message: err.message };
   }
-  if (err !== null && typeof err === 'object') {
-    const { status, statusCode } = err as { status?: unknown; statusCode?: unknown };
-    const value = status ?? statusCode;
-    if (typeof value === 'number' && value >= 400 && value <= 599) {
-      return value;
-    }
+
+  if (err instanceof ZodError) {
+    return {
+      status: 400,
+      message: 'Validation failed',
+      details: err.issues.map((issue) => ({
+        path: issue.path.join('.'),
+        message: issue.message,
+      })),
+    };
   }
-  return 500;
+
+  if (err instanceof MongooseError.ValidationError) {
+    return {
+      status: 400,
+      message: 'Validation failed',
+      details: Object.values(err.errors).map((e) => ({
+        path: e.path,
+        message: e.message,
+      })),
+    };
+  }
+
+  if (err instanceof MongooseError.CastError) {
+    return { status: 400, message: `Invalid value for "${err.path}"` };
+  }
+
+  if (err instanceof MulterError) {
+    const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+    return { status, message: err.message };
+  }
+
+  // Duplicate key from a unique index.
+  if (
+    err !== null &&
+    typeof err === 'object' &&
+    (err as { code?: unknown }).code === 11000
+  ) {
+    return { status: 409, message: 'Resource already exists' };
+  }
+
+  if (
+    err !== null &&
+    typeof err === 'object' &&
+    typeof (err as { status?: unknown }).status === 'number'
+  ) {
+    const status = (err as { status: number }).status;
+    const message = err instanceof Error ? err.message : 'Error';
+    return { status, message };
+  }
+
+  return {
+    status: 500,
+    message: err instanceof Error ? err.message : 'Unknown error',
+  };
 };
 
 /**
@@ -46,19 +100,22 @@ const statusOf = (err: unknown): number => {
  *  - 4xx: client's problem — echo the message, no logging.
  */
 export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
-  const status = statusOf(err);
-  const message = err instanceof Error ? err.message : 'Unknown error';
+  const { status, message, details } = normalize(err);
 
   if (status >= 500) {
     console.error(err);
   }
 
-  const body: ErrorBody = {
-    error: {
-      message: status >= 500 && config.isProduction ? 'Internal Server Error' : message,
-    },
-  };
+  const safeMessage =
+    status >= 500 && config.isProduction ? 'Internal Server Error' : message;
 
+  const body: {
+    error: { message: string; details?: unknown; stack?: string };
+  } = { error: { message: safeMessage } };
+
+  if (details !== undefined) {
+    body.error.details = details;
+  }
   if (!config.isProduction && err instanceof Error && err.stack !== undefined) {
     body.error.stack = err.stack;
   }

@@ -2,22 +2,15 @@ import http from 'node:http';
 
 import app from './app.ts';
 import config from './config/index.ts';
+import { connectDb, disconnectDb } from './db/mongoose.ts';
 
 /**
  * Process entry point.
  *
- * Responsibilities: open the HTTP socket, and shut it down cleanly on
- * SIGTERM/SIGINT or an unrecoverable error.
+ * Responsibilities: connect to MongoDB, open the HTTP socket, and shut both
+ * down cleanly on SIGTERM/SIGINT or an unrecoverable error.
  */
 const server = http.createServer(app);
-
-server.listen(config.port, () => {
-  console.log(
-    `[thought-management] listening on http://localhost:${config.port} (${config.env})`,
-  );
-});
-
-// --- Graceful shutdown --------------------------------------------------
 
 let shuttingDown = false;
 
@@ -25,15 +18,19 @@ const shutdown = (signal: string): void => {
   if (shuttingDown) return;
   shuttingDown = true;
 
-  console.log(`\n${signal} received — closing HTTP server...`);
+  console.log(`\n${signal} received — shutting down...`);
 
   server.close((err) => {
-    if (err) {
-      console.error('Error while closing server:', err);
-      process.exit(1);
-    }
-    console.log('HTTP server closed. Bye.');
-    process.exit(0);
+    void (async () => {
+      if (err) console.error('Error while closing server:', err);
+      try {
+        await disconnectDb();
+      } catch (dbErr) {
+        console.error('Error while disconnecting from MongoDB:', dbErr);
+      }
+      console.log('Shutdown complete. Bye.');
+      process.exit(err ? 1 : 0);
+    })();
   });
 
   // If open connections refuse to drain, don't hang forever.
@@ -41,6 +38,16 @@ const shutdown = (signal: string): void => {
     console.error('Could not close connections in time — forcing shutdown.');
     process.exit(1);
   }, 10_000).unref();
+};
+
+const main = async (): Promise<void> => {
+  await connectDb(config.mongo.uri);
+
+  server.listen(config.port, () => {
+    console.log(
+      `[thought-management] listening on http://localhost:${config.port} (${config.env})`,
+    );
+  });
 };
 
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
@@ -59,4 +66,9 @@ process.on('unhandledRejection', (reason) => {
 process.on('uncaughtException', (err) => {
   console.error('Uncaught exception:', err);
   shutdown('uncaughtException');
+});
+
+main().catch((err: unknown) => {
+  console.error('Failed to start:', err);
+  process.exit(1);
 });

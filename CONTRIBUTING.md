@@ -6,20 +6,33 @@ This is the process for every change to this codebase. Follow it top to bottom.
 
 - Node.js **>= 22** (`node --version`) — the project runs TypeScript natively, no build step for local dev.
 - Install dependencies once: `npm install`
+- A MongoDB instance. Set `MONGODB_URI` in `.env` (copy `.env.example`). Local:
+  `mongodb://127.0.0.1:27017/thought-management`, or an Atlas connection string.
+  The test suite does **not** need this — it starts its own in-memory mongod.
 
 ## Project layout
 
 ```
 src/
-  server.ts          entry point — opens the HTTP port, graceful shutdown
+  server.ts          entry point — connects the DB, opens the HTTP port, graceful shutdown
   app.ts             the Express app: middleware + route wiring (no port)
   config/index.ts    env parsing + validation — the ONLY place process.env is read
-  errors.ts          AppError — an Error that carries an HTTP status code
-  middleware/         cross-cutting request handlers (error handler, later: auth…)
-  routes/            one file per resource; <name>.test.ts sits next to <name>.ts
-testing/             test-only helpers (not shipped, not auto-run as tests)
+  errors.ts          AppError + badRequest()/notFoundError()/conflict() helpers
+  db/mongoose.ts     connect / disconnect lifecycle
+  models/            Mongoose schemas + inferred types; plugins/ = softDelete, serialization
+  services/          business logic + every Mongoose query lives here
+  routes/            thin HTTP handlers; <name>.schema.ts = its Zod schemas; <name>.test.ts alongside
+  middleware/         error handler, multipart upload
+  storage/           StoragePort abstraction — S3Storage (prod) / MemoryStorage (dev + tests)
+  lib/               cursor (keyset pagination), mime (upload allow-list)
+  schemas/common.ts  shared Zod pieces (objectId, dateString, paging)
+testing/             integration harness (in-memory DB + server), factories, api client
 dist/                compiled output from `npm run build` (git-ignored)
 ```
+
+**Layering rule:** `routes` parse input (Zod) and call `services`; `services` own
+all DB access and business rules; `models` only define shape + indexes. A route
+never touches a Mongoose model directly; a service never reads `req`.
 
 ## Scripts
 
@@ -173,8 +186,9 @@ git push origin --delete feat/thoughts-crud   # if it was pushed
 
 - **Location:** tests are colocated — `foo.ts` is tested by `foo.test.ts` in the same folder. Shared setup goes in `testing/`.
 - **Stack:** Node's built-in runner (`node:test`) + `node:assert/strict`. No Jest, no Vitest, no extra dependency.
-- **Integration tests boot the real app:** `createTestServer()` from `testing/server.ts` starts the actual Express app on a random port; tests hit it with `fetch`. Nothing about the framework is mocked.
-- **`NODE_ENV=test`** is set by the `test` script — config validates it, and request logging is silenced so output stays readable.
+- **Integration tests boot the real app:** call `useTestApp()` from `testing/harness.ts` at the top of the file. It starts an in-memory MongoDB and the Express app once, and wipes the DB + file store before each test. Hit the app with the `makeClient(app.url)` helper from `testing/api.ts`; seed with `testing/factories.ts`. Nothing is mocked — a real mongod, a real HTTP round-trip.
+- **`NODE_ENV=test`** is set by the `test` script — config validates it, forces the in-memory storage driver, caps upload size at 64 KiB, and silences request logging.
+- **Soft delete:** every read query auto-excludes `deletedAt != null`. To see deleted rows in a test, query the model with `.setOptions({ withDeleted: true })`. Deleting a thought cascades to its entries (`deletedReason: 'cascade'`); restoring it brings those back but not entries deleted on their own.
 - **What to cover per endpoint:**
   - happy path — status code **and** response body shape
   - each validation failure — `400` with a useful message

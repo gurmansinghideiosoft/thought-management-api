@@ -6,7 +6,9 @@ import morgan from 'morgan';
 
 import config from './config/index.ts';
 import { errorHandler, notFound } from './middleware/errorHandler.ts';
+import activityRouter from './routes/activity.ts';
 import healthRouter from './routes/health.ts';
+import thoughtsRouter from './routes/thoughts.ts';
 
 /**
  * Builds and configures the Express application.
@@ -66,6 +68,8 @@ if (!config.isTest) {
 // --- Routes --------------------------------------------------------
 
 app.use('/health', healthRouter);
+app.use('/api/thoughts', thoughtsRouter);
+app.use('/api/activity', activityRouter);
 
 // --- Fallbacks ---------------------------------------------------
 
