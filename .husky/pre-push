@@ -1,0 +1,4 @@
+# The full gate before code leaves your machine:
+# format:check -> lint -> typecheck -> test -> build
+# Bypass in an emergency with `git push --no-verify` (then fix it immediately).
+npm run check

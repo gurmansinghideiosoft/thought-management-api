@@ -1,0 +1,42 @@
+{
+  // Base config: used by the editor, `npm run typecheck`, ESLint, and the test
+  // runner. It type-checks everything but emits nothing (tsconfig.build.json
+  // handles emit).
+  "compilerOptions": {
+    /* --- Language & runtime target --- */
+    // Node 22 supports all of ES2024. No DOM libs — this is a server.
+    "target": "es2024",
+    "lib": ["es2024"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+
+    /* --- Source uses explicit `.ts` import specifiers --- */
+    // Node's native TypeScript loader needs the real extension; on build,
+    // `tsc` rewrites `./x.ts` -> `./x.js` in the emitted output.
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+
+    /* --- Strictness --- */
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+
+    /* --- Module semantics --- */
+    // Every import/export is either erased or kept verbatim — no guessing.
+    // Requires `import type { ... }` for type-only imports.
+    "verbatimModuleSyntax": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+
+    /* --- Emit options (only take effect via tsconfig.build.json) --- */
+    "outDir": "dist",
+    "declaration": true,
+    "sourceMap": true,
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts", "testing/**/*.ts"]
+}

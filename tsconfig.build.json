@@ -1,0 +1,11 @@
+{
+  // Production build: compile `src/` to `dist/`, skipping tests and test-only
+  // helpers. `npm run build` uses this file.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "noEmit": false
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}

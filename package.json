@@ -2,14 +2,60 @@
   "name": "thought-management-api",
   "version": "1.0.0",
   "description": "thought management system to organize our ideas at single place and enhance them with time",
-  "main": "server.js",
+  "main": "dist/server.js",
+  "type": "module",
   "scripts": {
-    "dev": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node dist/server.js",
+    "dev": "node --watch src/server.ts",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "NODE_ENV=test node --test",
+    "test:watch": "NODE_ENV=test node --test --watch",
+    "test:coverage": "NODE_ENV=test node --test --experimental-test-coverage",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "fix": "npm run format && npm run lint:fix",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run build",
+    "prepare": "husky || true"
   },
   "author": "Gurman Singh",
   "license": "ISC",
+  "engines": {
+    "node": ">=22"
+  },
+  "lint-staged": {
+    "*.{ts,js}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  },
   "dependencies": {
-    "express": "^5.2.1"
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
+    "morgan": "^1.12.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/morgan": "^1.9.10",
+    "@types/node": "^22.20.1",
+    "eslint": "^10.9.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-n": "^18.3.0",
+    "globals": "^17.11.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.4.1",
+    "prettier": "^3.9.6",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.68.0"
   }
 }

@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test / build output
+coverage/
+dist/
+*.tsbuildinfo
+
+# OS / editor cruft
+.DS_Store
