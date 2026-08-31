@@ -10,6 +10,8 @@ import { errorHandler, notFound } from './middleware/errorHandler.ts';
 import activityRouter from './routes/activity.ts';
 import authRouter from './routes/auth.ts';
 import healthRouter from './routes/health.ts';
+import taskTagsRouter from './routes/taskTags.ts';
+import tasksRouter from './routes/tasks.ts';
 import thoughtsRouter from './routes/thoughts.ts';
 
 /**
@@ -91,6 +93,8 @@ app.use('/api/auth', authRouter);
 // Everything below requires a valid access token.
 app.use('/api/thoughts', requireAuth, thoughtsRouter);
 app.use('/api/activity', requireAuth, activityRouter);
+app.use('/api/tasks', requireAuth, tasksRouter);
+app.use('/api/task-tags', requireAuth, taskTagsRouter);
 
 // --- Fallbacks ---------------------------------------------------
 

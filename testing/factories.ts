@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import type { Types } from 'mongoose';
 
 import { Entry, type EntryDocument, type EntryKind } from '../src/models/entry.model.ts';
+import { Task, type TaskDocument, type TaskStatus } from '../src/models/task.model.ts';
+import { TaskTag, type TaskTagDocument } from '../src/models/taskTag.model.ts';
 import {
   Thought,
   type ThoughtDocument,
@@ -62,6 +64,43 @@ export const seedEntry = (
     kind: 'note',
     body: 'seeded entry',
     starred: false,
+    tagIds: [],
+    ...overrides,
+  });
+
+interface TaskTagOverrides {
+  name?: string;
+  color?: string;
+}
+
+export const seedTaskTag = (
+  ownerId: Types.ObjectId | string,
+  overrides: TaskTagOverrides = {},
+): Promise<TaskTagDocument> =>
+  TaskTag.create({
+    ownerId,
+    name: overrides.name ?? `tag-${randomUUID().slice(0, 8)}`,
+    ...(overrides.color ? { color: overrides.color } : {}),
+  });
+
+interface TaskOverrides {
+  content?: string;
+  date?: string;
+  status?: TaskStatus;
+  priority?: number;
+  tagIds?: Types.ObjectId[];
+  completedAt?: Date | null;
+}
+
+export const seedTask = (
+  ownerId: Types.ObjectId | string,
+  overrides: TaskOverrides = {},
+): Promise<TaskDocument> =>
+  Task.create({
+    ownerId,
+    content: 'seeded task',
+    date: '2026-09-15',
+    priority: 3,
     tagIds: [],
     ...overrides,
   });

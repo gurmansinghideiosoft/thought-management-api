@@ -35,7 +35,8 @@ all DB access and business rules; `models` only define shape + indexes. A route
 never touches a Mongoose model directly; a service never reads `req`.
 
 **Auth & ownership:** `/api/auth/*` is public (`register`, `login`, `refresh`,
-`logout`, `me`); everything under `/api/thoughts` and `/api/activity` sits behind
+`logout`, `me`); everything under `/api/thoughts`, `/api/activity`, `/api/tasks`
+and `/api/task-tags` sits behind
 `requireAuth`, which verifies the `Bearer` access JWT, rejects blacklisted `jti`s
 (`TokenDenylist`, a TTL collection), and sets `req.auth`. Handlers read the user
 with `getAuth(req)` and pass `userId` into every service call. Every thought /
