@@ -11,6 +11,7 @@ import activityRouter from './routes/activity.ts';
 import authRouter from './routes/auth.ts';
 import healthRouter from './routes/health.ts';
 import journalRouter from './routes/journal.ts';
+import routineRouter from './routes/routine.ts';
 import taskTagsRouter from './routes/taskTags.ts';
 import tasksRouter from './routes/tasks.ts';
 import thoughtsRouter from './routes/thoughts.ts';
@@ -97,6 +98,7 @@ app.use('/api/thoughts', requireAuth, thoughtsRouter);
 app.use('/api/activity', requireAuth, activityRouter);
 app.use('/api/tasks', requireAuth, tasksRouter);
 app.use('/api/task-tags', requireAuth, taskTagsRouter);
+app.use('/api/routine', requireAuth, routineRouter);
 app.use('/api/journal', requireAuth, journalRouter);
 
 // --- Fallbacks ---------------------------------------------------

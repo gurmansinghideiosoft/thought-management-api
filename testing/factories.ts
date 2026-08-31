@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
 
-import type { Types } from 'mongoose';
+import { Types } from 'mongoose';
 
 import { Entry, type EntryDocument, type EntryKind } from '../src/models/entry.model.ts';
 import { JournalEntry } from '../src/models/journal.model.ts';
+import { Routine } from '../src/models/routine.model.ts';
 import { Task, type TaskDocument, type TaskStatus } from '../src/models/task.model.ts';
 import { TaskTag, type TaskTagDocument } from '../src/models/taskTag.model.ts';
 import {
@@ -125,4 +126,30 @@ export const seedJournalEntry = (
     content: overrides.content ?? { type: 'doc', content: [] },
     excerpt: overrides.excerpt ?? '',
     wordCount: overrides.wordCount ?? 0,
+  });
+
+interface RoutineItemSeed {
+  content?: string;
+  priority?: number;
+  tagIds?: Types.ObjectId[];
+  activeFrom?: string;
+  activeTo?: string | null;
+  position?: number;
+}
+
+export const seedRoutine = (
+  ownerId: Types.ObjectId | string,
+  items: RoutineItemSeed[] = [],
+) =>
+  Routine.create({
+    ownerId,
+    items: items.map((it, i) => ({
+      _id: new Types.ObjectId(),
+      content: it.content ?? `routine ${String(i)}`,
+      priority: it.priority ?? 3,
+      tagIds: it.tagIds ?? [],
+      position: it.position ?? i,
+      activeFrom: it.activeFrom ?? '2026-08-01',
+      activeTo: it.activeTo ?? null,
+    })),
   });

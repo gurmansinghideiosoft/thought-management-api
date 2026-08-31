@@ -47,7 +47,8 @@ export const idParams = z.object({ id: objectId });
 export const listTasksQuery = z.object({
   from: dateOnly.optional(),
   to: dateOnly.optional(),
-  status: z.enum(['pending', 'done']).optional(),
+  today: dateOnly.optional(),
+  status: z.enum(['pending', 'done', 'skipped']).optional(),
   tags: tagIdList,
   priority: priorityList,
   q: z.string().trim().optional(),
@@ -55,17 +56,32 @@ export const listTasksQuery = z.object({
 
 export const calendarQuery = z.object({
   month: monthOnly,
-  status: z.enum(['pending', 'done']).optional(),
+  today: dateOnly.optional(),
   tags: tagIdList,
   priority: priorityList,
 });
 
-export const createTaskBody = z.object({
-  content: z.string().trim().min(1).max(500),
-  date: dateOnly,
-  priority: priority.optional(),
-  tagIds: z.array(objectId).max(20).optional(),
-});
+const contentField = z.string().trim().min(1).max(500);
+const tagIdsField = z.array(objectId).max(20).optional();
+
+export const createTaskBody = z.union([
+  z.object({
+    kind: z.literal('range'),
+    content: contentField,
+    startDate: dateOnly,
+    endDate: dateOnly,
+    rangeMode: z.enum(['once', 'daily']),
+    priority: priority.optional(),
+    tagIds: tagIdsField,
+  }),
+  z.object({
+    kind: z.literal('single').optional(),
+    content: contentField,
+    date: dateOnly,
+    priority: priority.optional(),
+    tagIds: tagIdsField,
+  }),
+]);
 
 export const updateTaskBody = z
   .object({
@@ -79,3 +95,14 @@ export const updateTaskBody = z
   });
 
 export const statusBody = z.object({ status: z.enum(['pending', 'done']) });
+
+export const virtualStatusBody = z
+  .object({
+    date: dateOnly,
+    routineItemId: objectId.optional(),
+    rangeTaskId: objectId.optional(),
+    status: z.enum(['pending', 'done', 'skipped']),
+  })
+  .refine((v) => !v.routineItemId !== !v.rangeTaskId, {
+    message: 'Provide exactly one of routineItemId or rangeTaskId',
+  });

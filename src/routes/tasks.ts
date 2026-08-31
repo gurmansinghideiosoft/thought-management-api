@@ -9,6 +9,7 @@ import {
   listTasksQuery,
   statusBody,
   updateTaskBody,
+  virtualStatusBody,
 } from './tasks.schema.ts';
 
 const router = Router();
@@ -19,6 +20,7 @@ router.get('/', async (req, res) => {
   const items = await tasks.listTasks(userId, {
     from: query.from,
     to: query.to,
+    today: query.today,
     status: query.status,
     tagIds: query.tags,
     priorities: query.priority,
@@ -27,13 +29,13 @@ router.get('/', async (req, res) => {
   res.json({ items });
 });
 
-// Declared before `/:id`-style routes (there are none, but keep it explicit).
+// Declared before any `/:id`-style routes.
 router.get('/calendar', async (req, res) => {
   const { userId } = getAuth(req);
   const query = calendarQuery.parse(req.query);
   const counts = await tasks.taskCalendar(userId, {
     month: query.month,
-    status: query.status,
+    today: query.today,
     tagIds: query.tags,
     priorities: query.priority,
   });
@@ -45,6 +47,13 @@ router.post('/', async (req, res) => {
   const body = createTaskBody.parse(req.body);
   const task = await tasks.createTask(userId, body);
   res.status(201).json(task);
+});
+
+// Materialize + set status on a virtual routine / range-daily occurrence.
+router.put('/virtual/status', async (req, res) => {
+  const { userId } = getAuth(req);
+  const body = virtualStatusBody.parse(req.body);
+  res.json(await tasks.setVirtualTaskStatus(userId, body));
 });
 
 router.patch('/:id', async (req, res) => {

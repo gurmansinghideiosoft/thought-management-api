@@ -24,7 +24,7 @@ src/
   routes/            thin HTTP handlers; <name>.schema.ts = its Zod schemas; <name>.test.ts alongside
   middleware/         error handler, multipart upload, requireAuth
   storage/           StoragePort abstraction — S3Storage (prod) / MemoryStorage (dev + tests)
-  lib/               cursor (keyset pagination), mime (upload allow-list), jwt, password
+  lib/               cursor (keyset pagination), mime (upload allow-list), jwt, password, day (YYYY-MM-DD math)
   schemas/common.ts  shared Zod pieces (objectId, dateString, paging)
 testing/             integration harness (in-memory DB + server), factories, api client
 dist/                compiled output from `npm run build` (git-ignored)
@@ -36,7 +36,7 @@ never touches a Mongoose model directly; a service never reads `req`.
 
 **Auth & ownership:** `/api/auth/*` is public (`register`, `login`, `refresh`,
 `logout`, `me`); everything under `/api/thoughts`, `/api/activity`, `/api/tasks`,
-`/api/task-tags` and `/api/journal` sits behind
+`/api/task-tags`, `/api/routine` and `/api/journal` sits behind
 `requireAuth`, which verifies the `Bearer` access JWT, rejects blacklisted `jti`s
 (`TokenDenylist`, a TTL collection), and sets `req.auth`. Handlers read the user
 with `getAuth(req)` and pass `userId` into every service call. Every thought /
@@ -44,6 +44,21 @@ entry query is filtered by `ownerId`; a thought that exists but isn't yours
 returns **404**, never 403. Refresh tokens rotate — using an old one 401s. In
 tests, `useTestApp().registerAndClient()` returns an authed `api` client;
 `seedThought(ownerId, …)` / `seedEntry(thoughtId, ownerId, …)` need the owner.
+
+**Task shapes & the day view:** a `Task` is either `kind: 'single'` (one
+`date`) or `kind: 'range'` (`startDate…endDate`). A range runs in one of two
+modes: `once` (one task shown across the whole window, completed once) or
+`daily` (a separate checkbox on each day). A **routine** (`src/models/routine.model.ts`,
+one document per user) is an evolving list of daily task templates; each item
+carries an `activeFrom` / `activeTo` window so edits apply from today forward
+without rewriting the past. `src/services/taskExpansion.service.ts` merges these
+into a per-day `TaskView[]`: stored rows plus **virtual** occurrences of routine
+items and `range/daily` days, generated for **today + future only** (the
+past/future boundary is `?today=YYYY-MM-DD`, default server UTC date). Acting on
+a virtual occurrence (`PUT /api/tasks/virtual/status`) materialises it into a
+real `single` row carrying `routineItemId` / `rangeTaskId`, which then shadows
+the virtual one. `GET /api/tasks` and `/api/tasks/calendar` both run through the
+expansion, so their counts already include virtual items.
 
 ## Scripts
 
