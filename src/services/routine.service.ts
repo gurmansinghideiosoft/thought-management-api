@@ -98,18 +98,27 @@ export const removeRoutineItem = async (
   await routine.save();
 };
 
+/**
+ * Set item order from `itemIds`. Callers only ever see the active items (`GET
+ * /api/routine`), so this accepts any distinct subset of known ids rather than
+ * the full list; listed items take positions `0..n-1`, retired ones keep theirs.
+ */
 export const reorderRoutineItems = async (
   ownerId: string,
   itemIds: string[],
 ): Promise<RoutineDocument> => {
   const routine = await getRoutine(ownerId);
   const known = new Set(routine.items.map((i) => String(i._id)));
-  if (itemIds.length !== known.size || !itemIds.every((id) => known.has(id))) {
-    throw badRequest('itemIds must list every routine item exactly once');
+  const seen = new Set<string>();
+  for (const id of itemIds) {
+    if (!known.has(id)) throw notFoundError('Routine item not found');
+    if (seen.has(id)) throw badRequest('itemIds must not repeat an id');
+    seen.add(id);
   }
   const rank = new Map(itemIds.map((id, i) => [id, i]));
   for (const item of routine.items) {
-    item.position = rank.get(String(item._id)) ?? item.position;
+    const r = rank.get(String(item._id));
+    if (r !== undefined) item.position = r;
   }
   routine.markModified('items');
   await routine.save();

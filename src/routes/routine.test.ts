@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test, { beforeEach } from 'node:test';
 
+import { seedRoutine } from '../../testing/factories.ts';
 import { type AuthedClient, useTestApp } from '../../testing/harness.ts';
 import { todayUtc } from '../lib/day.ts';
 
@@ -59,6 +60,34 @@ test('removing an item added today hard-deletes it', async () => {
     '/api/routine?includeRetired=true',
   );
   assert.deepEqual(withRetired.body.items, []);
+});
+
+test('reorder accepts the active subset when a retired item is still on file', async () => {
+  await seedRoutine(auth.userId, [
+    { content: 'old', activeFrom: '2026-01-01', position: 0 },
+    { content: 'keep-a', activeFrom: '2026-01-01', position: 1 },
+    { content: 'keep-b', activeFrom: '2026-01-01', position: 2 },
+  ]);
+  // Retire "old" — it stays on the document with activeTo in the past.
+  const before = await api().get<{ items: Item[] }>('/api/routine');
+  const oldId = before.body.items.find((i) => i.content === 'old')?.id;
+  await api().del(`/api/routine/items/${oldId}`);
+
+  const active = await api().get<{ items: Item[] }>('/api/routine');
+  assert.deepEqual(
+    active.body.items.map((i) => i.content),
+    ['keep-a', 'keep-b'],
+  );
+
+  // Reordering just the two visible items must succeed.
+  const res = await api().put<{ items: Item[] }>('/api/routine/items/order', {
+    itemIds: [active.body.items[1]?.id, active.body.items[0]?.id],
+  });
+  assert.equal(res.status, 200);
+  assert.deepEqual(
+    res.body.items.map((i) => i.content),
+    ['keep-b', 'keep-a'],
+  );
 });
 
 test('creating an item with an unknown tag id is rejected', async () => {
