@@ -1,0 +1,15 @@
+{
+  "name": "thought-management-api",
+  "version": "1.0.0",
+  "description": "thought management system to organize our ideas at single place and enhance them with time",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Gurman Singh",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}
