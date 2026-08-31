@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { Types } from 'mongoose';
 
 import { Entry, type EntryDocument, type EntryKind } from '../src/models/entry.model.ts';
+import { JournalEntry } from '../src/models/journal.model.ts';
 import { Task, type TaskDocument, type TaskStatus } from '../src/models/task.model.ts';
 import { TaskTag, type TaskTagDocument } from '../src/models/taskTag.model.ts';
 import {
@@ -103,4 +104,25 @@ export const seedTask = (
     priority: 3,
     tagIds: [],
     ...overrides,
+  });
+
+interface JournalOverrides {
+  date?: string;
+  title?: string;
+  content?: Record<string, unknown>;
+  excerpt?: string;
+  wordCount?: number;
+}
+
+export const seedJournalEntry = (
+  ownerId: Types.ObjectId | string,
+  overrides: JournalOverrides = {},
+) =>
+  JournalEntry.create({
+    ownerId,
+    date: overrides.date ?? '2026-09-15',
+    title: overrides.title ?? '',
+    content: overrides.content ?? { type: 'doc', content: [] },
+    excerpt: overrides.excerpt ?? '',
+    wordCount: overrides.wordCount ?? 0,
   });

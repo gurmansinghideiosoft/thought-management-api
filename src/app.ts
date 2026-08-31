@@ -10,6 +10,7 @@ import { errorHandler, notFound } from './middleware/errorHandler.ts';
 import activityRouter from './routes/activity.ts';
 import authRouter from './routes/auth.ts';
 import healthRouter from './routes/health.ts';
+import journalRouter from './routes/journal.ts';
 import taskTagsRouter from './routes/taskTags.ts';
 import tasksRouter from './routes/tasks.ts';
 import thoughtsRouter from './routes/thoughts.ts';
@@ -61,8 +62,9 @@ if (!config.isTest) {
 
 // --- Request parsing ---------------------------------------------------
 
-// Cap body size so a single large payload can't exhaust memory.
-app.use(express.json({ limit: '10kb' }));
+// Cap body size so a single large payload can't exhaust memory. Journal
+// entries carry a rich-text document, so the ceiling is 1 MB rather than a few kB.
+app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
 // --- Logging ---------------------------------------------------------
@@ -95,6 +97,7 @@ app.use('/api/thoughts', requireAuth, thoughtsRouter);
 app.use('/api/activity', requireAuth, activityRouter);
 app.use('/api/tasks', requireAuth, tasksRouter);
 app.use('/api/task-tags', requireAuth, taskTagsRouter);
+app.use('/api/journal', requireAuth, journalRouter);
 
 // --- Fallbacks ---------------------------------------------------
 
