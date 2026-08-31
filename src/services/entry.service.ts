@@ -44,9 +44,14 @@ const syncThoughtCounters = async (thoughtId: Types.ObjectId): Promise<void> => 
 
 export const getEntryOrThrow = async (
   thoughtId: string,
+  ownerId: string,
   entryId: string,
 ): Promise<EntryDocument> => {
-  const entry = await Entry.findOne({ _id: entryId, thoughtId });
+  const entry = await Entry.findOne({
+    _id: entryId,
+    thoughtId,
+    ownerId: new Types.ObjectId(ownerId),
+  });
   if (!entry) throw notFoundError('Entry not found');
   return entry;
 };
@@ -74,12 +79,14 @@ export interface TimelinePage {
 
 export const listTimeline = async (
   thoughtId: string,
+  ownerId: string,
   params: TimelineParams,
 ): Promise<TimelinePage> => {
-  await getThoughtOrThrow(thoughtId);
+  await getThoughtOrThrow(thoughtId, ownerId);
 
   const base: Record<string, unknown> = {
     thoughtId: new Types.ObjectId(thoughtId),
+    ownerId: new Types.ObjectId(ownerId),
     deletedAt: null,
   };
   if (params.tagId) base.tagIds = new Types.ObjectId(params.tagId);
@@ -125,9 +132,10 @@ export const listTimeline = async (
 
 export const getEntryDetail = async (
   thoughtId: string,
+  ownerId: string,
   entryId: string,
 ): Promise<{ entry: EntryDocument; downloadUrl: string | null }> => {
-  const entry = await getEntryOrThrow(thoughtId, entryId);
+  const entry = await getEntryOrThrow(thoughtId, ownerId, entryId);
   const downloadUrl =
     entry.kind === 'file' && entry.file ? await downloadUrlFor(entry.file) : null;
   return { entry, downloadUrl };
@@ -146,12 +154,14 @@ export interface AddEntryInput {
 
 export const addEntry = async (
   thoughtId: string,
+  ownerId: string,
   input: AddEntryInput,
 ): Promise<EntryDocument> => {
-  const thought = await getThoughtOrThrow(thoughtId);
+  const thought = await getThoughtOrThrow(thoughtId, ownerId);
 
   const doc: Record<string, unknown> = {
     thoughtId: thought._id,
+    ownerId: thought.ownerId,
     kind: input.kind,
     body: input.body ?? '',
     tagIds: toTagObjectIds(thought, input.tagIds),
@@ -180,10 +190,11 @@ export const addEntry = async (
 
 export const updateEntry = async (
   thoughtId: string,
+  ownerId: string,
   entryId: string,
   patch: { body?: string; link?: EntryLink; tagIds?: string[] },
 ): Promise<EntryDocument> => {
-  const entry = await getEntryOrThrow(thoughtId, entryId);
+  const entry = await getEntryOrThrow(thoughtId, ownerId, entryId);
 
   if (patch.body !== undefined) entry.body = patch.body;
   if (patch.link !== undefined) {
@@ -191,7 +202,7 @@ export const updateEntry = async (
     entry.link = patch.link;
   }
   if (patch.tagIds !== undefined) {
-    const thought = await getThoughtOrThrow(thoughtId);
+    const thought = await getThoughtOrThrow(thoughtId, ownerId);
     entry.tagIds = toTagObjectIds(thought, patch.tagIds);
   }
 
@@ -201,10 +212,11 @@ export const updateEntry = async (
 
 export const setEntryStarred = async (
   thoughtId: string,
+  ownerId: string,
   entryId: string,
   starred: boolean,
 ): Promise<EntryDocument> => {
-  const entry = await getEntryOrThrow(thoughtId, entryId);
+  const entry = await getEntryOrThrow(thoughtId, ownerId, entryId);
   entry.starred = starred;
   await entry.save();
   return entry;
@@ -212,37 +224,40 @@ export const setEntryStarred = async (
 
 export const attachTag = async (
   thoughtId: string,
+  ownerId: string,
   entryId: string,
   tagId: string,
 ): Promise<EntryDocument> => {
-  const thought = await getThoughtOrThrow(thoughtId);
+  const thought = await getThoughtOrThrow(thoughtId, ownerId);
   toTagObjectIds(thought, [tagId]); // validates the tag exists
-  const entry = await getEntryOrThrow(thoughtId, entryId);
+  const entry = await getEntryOrThrow(thoughtId, ownerId, entryId);
   await Entry.updateOne(
     { _id: entry._id },
     { $addToSet: { tagIds: new Types.ObjectId(tagId) } },
   );
-  return getEntryOrThrow(thoughtId, entryId);
+  return getEntryOrThrow(thoughtId, ownerId, entryId);
 };
 
 export const detachTag = async (
   thoughtId: string,
+  ownerId: string,
   entryId: string,
   tagId: string,
 ): Promise<EntryDocument> => {
-  const entry = await getEntryOrThrow(thoughtId, entryId);
+  const entry = await getEntryOrThrow(thoughtId, ownerId, entryId);
   await Entry.updateOne(
     { _id: entry._id },
     { $pull: { tagIds: new Types.ObjectId(tagId) } },
   );
-  return getEntryOrThrow(thoughtId, entryId);
+  return getEntryOrThrow(thoughtId, ownerId, entryId);
 };
 
 export const softDeleteEntry = async (
   thoughtId: string,
+  ownerId: string,
   entryId: string,
 ): Promise<void> => {
-  const entry = await getEntryOrThrow(thoughtId, entryId);
+  const entry = await getEntryOrThrow(thoughtId, ownerId, entryId);
   await Entry.updateOne(
     { _id: entry._id },
     { $set: { deletedAt: new Date(), deletedReason: 'direct' } },
@@ -252,11 +267,14 @@ export const softDeleteEntry = async (
 
 export const restoreEntry = async (
   thoughtId: string,
+  ownerId: string,
   entryId: string,
 ): Promise<EntryDocument> => {
-  const entry = await Entry.findOne({ _id: entryId, thoughtId }).setOptions({
-    withDeleted: true,
-  });
+  const entry = await Entry.findOne({
+    _id: entryId,
+    thoughtId,
+    ownerId: new Types.ObjectId(ownerId),
+  }).setOptions({ withDeleted: true });
   if (!entry) throw notFoundError('Entry not found');
   if (entry.deletedAt === null) throw badRequest('Entry is not deleted');
 
@@ -265,7 +283,7 @@ export const restoreEntry = async (
     { $set: { deletedAt: null, deletedReason: null } },
   );
   await syncThoughtCounters(entry.thoughtId);
-  return getEntryOrThrow(thoughtId, entryId);
+  return getEntryOrThrow(thoughtId, ownerId, entryId);
 };
 
 /** Remove a tag id from every entry of a thought (used when a tag is deleted). */

@@ -5,8 +5,10 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 
 import config from './config/index.ts';
+import { requireAuth } from './middleware/auth.ts';
 import { errorHandler, notFound } from './middleware/errorHandler.ts';
 import activityRouter from './routes/activity.ts';
+import authRouter from './routes/auth.ts';
 import healthRouter from './routes/health.ts';
 import thoughtsRouter from './routes/thoughts.ts';
 
@@ -41,16 +43,19 @@ app.use(
   }),
 );
 
-// Throttle abusive clients. Applied to every route; tighten per-route later for
-// expensive or auth endpoints.
-app.use(
-  rateLimit({
-    windowMs: config.rateLimit.windowMs,
-    limit: config.rateLimit.max,
-    standardHeaders: 'draft-7',
-    legacyHeaders: false,
-  }),
-);
+// Throttle abusive clients. Applied to every route; tighter per-route limits sit
+// on the auth endpoints below. Disabled under the test runner so a busy suite
+// doesn't trip it.
+if (!config.isTest) {
+  app.use(
+    rateLimit({
+      windowMs: config.rateLimit.windowMs,
+      limit: config.rateLimit.max,
+      standardHeaders: 'draft-7',
+      legacyHeaders: false,
+    }),
+  );
+}
 
 // --- Request parsing ---------------------------------------------------
 
@@ -68,8 +73,24 @@ if (!config.isTest) {
 // --- Routes --------------------------------------------------------
 
 app.use('/health', healthRouter);
-app.use('/api/thoughts', thoughtsRouter);
-app.use('/api/activity', activityRouter);
+
+// Auth — public, but with a tighter limiter on the credential endpoints to slow
+// brute-force / enumeration attempts.
+if (!config.isTest) {
+  const authLimiter = rateLimit({
+    windowMs: config.rateLimit.windowMs,
+    limit: config.auth.rateLimitMax,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+  });
+  app.use('/api/auth/login', authLimiter);
+  app.use('/api/auth/register', authLimiter);
+}
+app.use('/api/auth', authRouter);
+
+// Everything below requires a valid access token.
+app.use('/api/thoughts', requireAuth, thoughtsRouter);
+app.use('/api/activity', requireAuth, activityRouter);
 
 // --- Fallbacks ---------------------------------------------------
 

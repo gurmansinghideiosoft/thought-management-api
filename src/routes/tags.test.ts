@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { beforeEach } from 'node:test';
 
-import { makeClient } from '../../testing/api.ts';
-import { useTestApp } from '../../testing/harness.ts';
+import { type AuthedClient, useTestApp } from '../../testing/harness.ts';
 
 const app = useTestApp();
-const api = () => makeClient(app.url);
+let auth: AuthedClient;
+const api = () => auth.api;
+
+beforeEach(async () => {
+  auth = await app.registerAndClient();
+});
 
 interface Tag {
   id: string;

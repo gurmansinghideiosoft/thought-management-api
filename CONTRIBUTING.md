@@ -22,9 +22,9 @@ src/
   models/            Mongoose schemas + inferred types; plugins/ = softDelete, serialization
   services/          business logic + every Mongoose query lives here
   routes/            thin HTTP handlers; <name>.schema.ts = its Zod schemas; <name>.test.ts alongside
-  middleware/         error handler, multipart upload
+  middleware/         error handler, multipart upload, requireAuth
   storage/           StoragePort abstraction — S3Storage (prod) / MemoryStorage (dev + tests)
-  lib/               cursor (keyset pagination), mime (upload allow-list)
+  lib/               cursor (keyset pagination), mime (upload allow-list), jwt, password
   schemas/common.ts  shared Zod pieces (objectId, dateString, paging)
 testing/             integration harness (in-memory DB + server), factories, api client
 dist/                compiled output from `npm run build` (git-ignored)
@@ -33,6 +33,16 @@ dist/                compiled output from `npm run build` (git-ignored)
 **Layering rule:** `routes` parse input (Zod) and call `services`; `services` own
 all DB access and business rules; `models` only define shape + indexes. A route
 never touches a Mongoose model directly; a service never reads `req`.
+
+**Auth & ownership:** `/api/auth/*` is public (`register`, `login`, `refresh`,
+`logout`, `me`); everything under `/api/thoughts` and `/api/activity` sits behind
+`requireAuth`, which verifies the `Bearer` access JWT, rejects blacklisted `jti`s
+(`TokenDenylist`, a TTL collection), and sets `req.auth`. Handlers read the user
+with `getAuth(req)` and pass `userId` into every service call. Every thought /
+entry query is filtered by `ownerId`; a thought that exists but isn't yours
+returns **404**, never 403. Refresh tokens rotate — using an old one 401s. In
+tests, `useTestApp().registerAndClient()` returns an authed `api` client;
+`seedThought(ownerId, …)` / `seedEntry(thoughtId, ownerId, …)` need the owner.
 
 ## Scripts
 

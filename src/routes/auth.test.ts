@@ -1,0 +1,129 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import { makeClient } from '../../testing/api.ts';
+import { useTestApp } from '../../testing/harness.ts';
+
+const app = useTestApp();
+const anon = () => makeClient(app.url);
+
+interface AuthBody {
+  user: { id: string; email: string; name: string; passwordHash?: string };
+  accessToken: string;
+  refreshToken: string;
+}
+
+const register = (email = 'a@b.com', password = 'password123') =>
+  anon().post<AuthBody>('/api/auth/register', { email, password });
+
+test('POST /register creates an account and returns tokens (no hash leaked)', async () => {
+  const res = await register('new@user.com', 'sup3rsecret');
+  assert.equal(res.status, 201);
+  assert.equal(res.body.user.email, 'new@user.com');
+  assert.equal(res.body.user.passwordHash, undefined);
+  assert.ok(res.body.accessToken && res.body.refreshToken);
+});
+
+test('POST /register is 409 on a duplicate email (case-insensitive)', async () => {
+  await register('dup@user.com');
+  const again = await anon().post('/api/auth/register', {
+    email: 'DUP@user.com',
+    password: 'password123',
+  });
+  assert.equal(again.status, 409);
+});
+
+test('POST /register rejects a short password with 400', async () => {
+  const res = await anon().post('/api/auth/register', {
+    email: 'x@y.com',
+    password: 'short',
+  });
+  assert.equal(res.status, 400);
+});
+
+test('POST /login succeeds with the right password, 401 otherwise', async () => {
+  await register('login@user.com', 'rightpassword');
+
+  const ok = await anon().post<AuthBody>('/api/auth/login', {
+    email: 'login@user.com',
+    password: 'rightpassword',
+  });
+  assert.equal(ok.status, 200);
+  assert.ok(ok.body.accessToken);
+
+  const wrong = await anon().post('/api/auth/login', {
+    email: 'login@user.com',
+    password: 'wrongpassword',
+  });
+  assert.equal(wrong.status, 401);
+
+  const unknown = await anon().post('/api/auth/login', {
+    email: 'nobody@user.com',
+    password: 'whatever12',
+  });
+  assert.equal(unknown.status, 401);
+  assert.deepEqual(wrong.body, unknown.body); // identical — no user enumeration
+});
+
+test('GET /me needs a valid bearer token', async () => {
+  const { body } = await register('me@user.com');
+  const authed = makeClient(app.url, body.accessToken);
+
+  const ok = await authed.get<{ user: { email: string } }>('/api/auth/me');
+  assert.equal(ok.status, 200);
+  assert.equal(ok.body.user.email, 'me@user.com');
+
+  assert.equal((await anon().get('/api/auth/me')).status, 401);
+  assert.equal(
+    (await makeClient(app.url, 'garbage.token.here').get('/api/auth/me')).status,
+    401,
+  );
+});
+
+test('POST /refresh rotates: the old refresh token stops working', async () => {
+  const { body } = await register('rot@user.com');
+
+  const first = await anon().post<{ accessToken: string; refreshToken: string }>(
+    '/api/auth/refresh',
+    { refreshToken: body.refreshToken },
+  );
+  assert.equal(first.status, 200);
+  assert.notEqual(first.body.refreshToken, body.refreshToken);
+
+  // Re-using the original refresh token is now rejected.
+  const replay = await anon().post('/api/auth/refresh', {
+    refreshToken: body.refreshToken,
+  });
+  assert.equal(replay.status, 401);
+
+  // The freshly issued one works.
+  const second = await anon().post('/api/auth/refresh', {
+    refreshToken: first.body.refreshToken,
+  });
+  assert.equal(second.status, 200);
+});
+
+test('POST /logout blacklists the access token immediately', async () => {
+  const { body } = await register('out@user.com');
+  const authed = makeClient(app.url, body.accessToken);
+
+  assert.equal((await authed.get('/api/auth/me')).status, 200);
+
+  const out = await authed.post('/api/auth/logout', {
+    refreshToken: body.refreshToken,
+  });
+  assert.equal(out.status, 204);
+
+  // Same token, now revoked.
+  assert.equal((await authed.get('/api/auth/me')).status, 401);
+  assert.equal(
+    (await anon().post('/api/auth/refresh', { refreshToken: body.refreshToken })).status,
+    401,
+  );
+});
+
+test('protected resources reject anonymous requests', async () => {
+  assert.equal((await anon().get('/api/thoughts')).status, 401);
+  assert.equal((await anon().get('/api/activity')).status, 401);
+  assert.equal((await anon().post('/api/thoughts', { title: 'x' })).status, 401);
+});

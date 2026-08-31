@@ -37,6 +37,16 @@ interface UploadsConfig {
   keyPrefix: string;
 }
 
+interface AuthConfig {
+  accessSecret: string;
+  refreshSecret: string;
+  /** `jsonwebtoken` duration strings, e.g. `15m`, `30d`. */
+  accessTtl: string;
+  refreshTtl: string;
+  /** Extra rate-limit cap for /auth/login and /auth/register (per window). */
+  rateLimitMax: number;
+}
+
 interface Config {
   readonly env: NodeEnv;
   readonly isProduction: boolean;
@@ -49,6 +59,7 @@ interface Config {
   readonly mongo: Readonly<{ uri: string }>;
   readonly storage: Readonly<StorageConfig>;
   readonly uploads: Readonly<UploadsConfig>;
+  readonly auth: Readonly<AuthConfig>;
 }
 
 const ALLOWED_ENVS = ['development', 'test', 'production'] as const;
@@ -133,6 +144,29 @@ if (uploads.maxBytes < 1024) {
   errors.push('UPLOAD_MAX_BYTES must be at least 1024');
 }
 
+// Auth — JWT secrets are required outside tests (tests use fixed dev secrets).
+const TEST_SECRET = 'test-secret-value-that-is-at-least-32-characters';
+const accessSecret = process.env.JWT_ACCESS_SECRET ?? (isTest ? TEST_SECRET : '');
+const refreshSecret =
+  process.env.JWT_REFRESH_SECRET ?? (isTest ? `${TEST_SECRET}-refresh` : '');
+if (accessSecret.length < 32) {
+  errors.push('JWT_ACCESS_SECRET is required and must be at least 32 characters');
+}
+if (refreshSecret.length < 32) {
+  errors.push('JWT_REFRESH_SECRET is required and must be at least 32 characters');
+}
+if (accessSecret !== '' && accessSecret === refreshSecret) {
+  errors.push('JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must differ');
+}
+
+const auth: AuthConfig = {
+  accessSecret,
+  refreshSecret,
+  accessTtl: process.env.ACCESS_TOKEN_TTL ?? '15m',
+  refreshTtl: process.env.REFRESH_TOKEN_TTL ?? '30d',
+  rateLimitMax: toInt(process.env.AUTH_RATE_LIMIT_MAX, 10),
+};
+
 if (errors.length > 0) {
   throw new Error(`Invalid configuration:\n  - ${errors.join('\n  - ')}`);
 }
@@ -154,6 +188,7 @@ const config: Config = Object.freeze({
   mongo: Object.freeze({ uri: mongoUri }),
   storage: Object.freeze({ driver, s3: s3 ? Object.freeze(s3) : undefined }),
   uploads: Object.freeze(uploads),
+  auth: Object.freeze(auth),
 });
 
 export default config;

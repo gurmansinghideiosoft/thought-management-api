@@ -1,15 +1,20 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { beforeEach } from 'node:test';
 
 import { Types } from 'mongoose';
 
-import { makeClient } from '../../testing/api.ts';
 import { seedEntry, seedThought } from '../../testing/factories.ts';
-import { useTestApp } from '../../testing/harness.ts';
+import { type AuthedClient, useTestApp } from '../../testing/harness.ts';
 import { Thought } from '../models/thought.model.ts';
 
 const app = useTestApp();
-const api = () => makeClient(app.url);
+let auth: AuthedClient;
+const api = () => auth.api;
+const uid = () => auth.userId;
+
+beforeEach(async () => {
+  auth = await app.registerAndClient();
+});
 
 /** Backdate a thought's createdAt via the raw driver (bypasses timestamps). */
 const backdateThought = (id: string, when: Date): Promise<unknown> =>
@@ -31,6 +36,11 @@ interface ListBody {
   items: ThoughtBody[];
   pagination: { page: number; limit: number; total: number; totalPages: number };
 }
+
+test('requires authentication', async () => {
+  const anon = await fetch(`${app.url}/api/thoughts`);
+  assert.equal(anon.status, 401);
+});
 
 test('POST /api/thoughts creates a thought with initial tags', async () => {
   const res = await api().post<ThoughtBody>('/api/thoughts', {
@@ -61,10 +71,10 @@ test('POST /api/thoughts rejects duplicate tag names with 409', async () => {
 });
 
 test('GET /api/thoughts filters by name, date, and status; and sorts', async () => {
-  const old = await seedThought({ title: 'Alpha project' });
+  const old = await seedThought(uid(), { title: 'Alpha project' });
   await backdateThought(old.id, new Date('2026-01-01T00:00:00Z'));
-  const recent = await seedThought({ title: 'Beta project' });
-  const gamma = await seedThought({ title: 'Gamma', status: 'archived' });
+  const recent = await seedThought(uid(), { title: 'Beta project' });
+  const gamma = await seedThought(uid(), { title: 'Gamma', status: 'archived' });
 
   const byName = await api().get<ListBody>('/api/thoughts?q=beta');
   assert.equal(byName.body.items.length, 1);
@@ -82,11 +92,9 @@ test('GET /api/thoughts filters by name, date, and status; and sorts', async () 
     'the January thought is filtered out by createdFrom=2026-06-01',
   );
 
-  // oldest first -> the backdated thought leads
   const oldest = await api().get<ListBody>('/api/thoughts?sort=oldest');
   assert.equal(oldest.body.items[0]?.id, old.id);
 
-  // newest-created first -> the last one seeded leads
   const created = await api().get<ListBody>('/api/thoughts?sort=created');
   assert.equal(created.body.items[0]?.id, gamma.id);
   const createdIds = created.body.items.map((t) => t.id);
@@ -94,7 +102,7 @@ test('GET /api/thoughts filters by name, date, and status; and sorts', async () 
 });
 
 test('GET /api/thoughts paginates', async () => {
-  for (let i = 0; i < 5; i += 1) await seedThought({ title: `T${String(i)}` });
+  for (let i = 0; i < 5; i += 1) await seedThought(uid(), { title: `T${String(i)}` });
 
   const page1 = await api().get<ListBody>('/api/thoughts?limit=2&page=1');
   assert.equal(page1.body.items.length, 2);
@@ -103,6 +111,19 @@ test('GET /api/thoughts paginates', async () => {
 
   const page3 = await api().get<ListBody>('/api/thoughts?limit=2&page=3');
   assert.equal(page3.body.items.length, 1);
+});
+
+test('one user cannot see or touch another user’s thought', async () => {
+  const mine = await api().post<ThoughtBody>('/api/thoughts', { title: 'mine' });
+  const other = await app.registerAndClient();
+
+  assert.equal((await other.api.get(`/api/thoughts/${mine.body.id}`)).status, 404);
+  assert.equal(
+    (await other.api.patch(`/api/thoughts/${mine.body.id}`, { title: 'hijack' })).status,
+    404,
+  );
+  assert.equal((await other.api.del(`/api/thoughts/${mine.body.id}`)).status, 404);
+  assert.deepEqual((await other.api.get<ListBody>('/api/thoughts')).body.items, []);
 });
 
 test('GET /api/thoughts/:id returns 404 for a missing id', async () => {
@@ -116,7 +137,7 @@ test('GET /api/thoughts/:id returns 400 for a malformed id', async () => {
 });
 
 test('PATCH /api/thoughts/:id edits fields', async () => {
-  const thought = await seedThought({ title: 'old' });
+  const thought = await seedThought(uid(), { title: 'old' });
   const res = await api().patch<ThoughtBody>(`/api/thoughts/${thought.id}`, {
     title: 'new title',
     description: 'new description',
@@ -127,7 +148,7 @@ test('PATCH /api/thoughts/:id edits fields', async () => {
 });
 
 test('archive / unarchive toggle status', async () => {
-  const thought = await seedThought();
+  const thought = await seedThought(uid());
   const archived = await api().post<ThoughtBody>(`/api/thoughts/${thought.id}/archive`);
   assert.equal(archived.body.status, 'archived');
   const active = await api().post<ThoughtBody>(`/api/thoughts/${thought.id}/unarchive`);
@@ -135,8 +156,8 @@ test('archive / unarchive toggle status', async () => {
 });
 
 test('DELETE soft-deletes, hides from list, cascades to entries, and restores', async () => {
-  const thought = await seedThought({ title: 'to delete' });
-  await seedEntry(thought._id, { body: 'child entry' });
+  const thought = await seedThought(uid(), { title: 'to delete' });
+  await seedEntry(thought._id, uid(), { body: 'child entry' });
 
   const del = await api().del(`/api/thoughts/${thought.id}`);
   assert.equal(del.status, 204);
@@ -151,7 +172,6 @@ test('DELETE soft-deletes, hides from list, cascades to entries, and restores', 
   const entries = await api().get<{ items: unknown[] }>(
     `/api/thoughts/${thought.id}/entries`,
   );
-  // the thought is gone, so its entries endpoint 404s
   assert.equal(entries.status, 404);
 
   const restore = await api().post<ThoughtBody>(`/api/thoughts/${thought.id}/restore`);
@@ -165,16 +185,16 @@ test('DELETE soft-deletes, hides from list, cascades to entries, and restores', 
 });
 
 test('restoring a thought that is not deleted returns 400', async () => {
-  const thought = await seedThought();
+  const thought = await seedThought(uid());
   const res = await api().post(`/api/thoughts/${thought.id}/restore`);
   assert.equal(res.status, 400);
 });
 
 test('GET /api/thoughts/:id/stats summarizes the chain', async () => {
-  const thought = await seedThought();
-  await seedEntry(thought._id, { kind: 'note', body: 'a' });
-  await seedEntry(thought._id, { kind: 'note', body: 'b', starred: true });
-  await seedEntry(thought._id, { kind: 'link', body: 'c' });
+  const thought = await seedThought(uid());
+  await seedEntry(thought._id, uid(), { kind: 'note', body: 'a' });
+  await seedEntry(thought._id, uid(), { kind: 'note', body: 'b', starred: true });
+  await seedEntry(thought._id, uid(), { kind: 'link', body: 'c' });
 
   const res = await api().get<{
     totalEntries: number;

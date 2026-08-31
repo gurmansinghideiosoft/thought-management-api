@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import type { Types } from 'mongoose';
 
 import { Entry, type EntryDocument, type EntryKind } from '../src/models/entry.model.ts';
@@ -6,6 +8,17 @@ import {
   type ThoughtDocument,
   type ThoughtStatus,
 } from '../src/models/thought.model.ts';
+import { User, type UserDocument } from '../src/models/user.model.ts';
+
+export const createUser = (
+  overrides: { email?: string; name?: string } = {},
+): Promise<UserDocument> =>
+  User.create({
+    email: overrides.email ?? `user-${randomUUID()}@test.dev`,
+    // not a real argon2 hash — fine for tests that never log in
+    passwordHash: 'seeded',
+    name: overrides.name ?? '',
+  });
 
 interface ThoughtOverrides {
   title?: string;
@@ -14,8 +27,12 @@ interface ThoughtOverrides {
   tags?: { name: string; color?: string }[];
 }
 
-export const seedThought = (overrides: ThoughtOverrides = {}): Promise<ThoughtDocument> =>
+export const seedThought = (
+  ownerId: Types.ObjectId | string,
+  overrides: ThoughtOverrides = {},
+): Promise<ThoughtDocument> =>
   Thought.create({
+    ownerId,
     title: 'Seed thought',
     description: '',
     ...overrides,
@@ -36,10 +53,12 @@ interface EntryOverrides {
  */
 export const seedEntry = (
   thoughtId: Types.ObjectId | string,
+  ownerId: Types.ObjectId | string,
   overrides: EntryOverrides = {},
 ): Promise<EntryDocument> =>
   Entry.create({
     thoughtId,
+    ownerId,
     kind: 'note',
     body: 'seeded entry',
     starred: false,

@@ -1,13 +1,13 @@
 import { Types } from 'mongoose';
 
 import { badRequest, conflict, notFoundError } from '../errors.ts';
-import { escapeRegExp } from '../schemas/common.ts';
 import { Entry, type EntryKind } from '../models/entry.model.ts';
 import {
   Thought,
   type ThoughtDocument,
   type ThoughtStatus,
 } from '../models/thought.model.ts';
+import { escapeRegExp } from '../schemas/common.ts';
 
 export type ThoughtSort = 'recent' | 'created' | 'oldest' | 'title';
 
@@ -47,6 +47,8 @@ const SORT_SPECS: Record<ThoughtSort, Record<string, 1 | -1>> = {
   title: { title: 1, _id: 1 },
 };
 
+const owner = (ownerId: string): Types.ObjectId => new Types.ObjectId(ownerId);
+
 /** Reject duplicate tag names (case-insensitive) within one create call. */
 const normalizeTags = (tags: TagInput[] | undefined): TagInput[] => {
   if (!tags || tags.length === 0) return [];
@@ -65,25 +67,31 @@ const normalizeTags = (tags: TagInput[] | undefined): TagInput[] => {
 };
 
 export const createThought = async (
+  ownerId: string,
   input: CreateThoughtInput,
-): Promise<ThoughtDocument> => {
-  return Thought.create({
+): Promise<ThoughtDocument> =>
+  Thought.create({
+    ownerId: owner(ownerId),
     title: input.title,
     description: input.description ?? '',
     tags: normalizeTags(input.tags),
   });
-};
 
-export const getThoughtOrThrow = async (id: string): Promise<ThoughtDocument> => {
-  const thought = await Thought.findById(id);
+/** Not-found (never 403) when the thought exists but belongs to someone else. */
+export const getThoughtOrThrow = async (
+  id: string,
+  ownerId: string,
+): Promise<ThoughtDocument> => {
+  const thought = await Thought.findOne({ _id: id, ownerId: owner(ownerId) });
   if (!thought) throw notFoundError('Thought not found');
   return thought;
 };
 
 export const listThoughts = async (
+  ownerId: string,
   params: ListThoughtsParams,
 ): Promise<ThoughtListResult> => {
-  const filter: Record<string, unknown> = {};
+  const filter: Record<string, unknown> = { ownerId: owner(ownerId) };
 
   if (params.status) filter.status = params.status;
 
@@ -114,11 +122,11 @@ export const listThoughts = async (
   };
 };
 
-export const listTrashedThoughts = async (params: {
-  page: number;
-  limit: number;
-}): Promise<ThoughtListResult> => {
-  const filter = { deletedAt: { $ne: null } };
+export const listTrashedThoughts = async (
+  ownerId: string,
+  params: { page: number; limit: number },
+): Promise<ThoughtListResult> => {
+  const filter = { ownerId: owner(ownerId), deletedAt: { $ne: null } };
   const skip = (params.page - 1) * params.limit;
 
   const [items, total] = await Promise.all([
@@ -141,9 +149,10 @@ export const listTrashedThoughts = async (params: {
 
 export const updateThought = async (
   id: string,
+  ownerId: string,
   patch: { title?: string; description?: string },
 ): Promise<ThoughtDocument> => {
-  const thought = await getThoughtOrThrow(id);
+  const thought = await getThoughtOrThrow(id, ownerId);
   if (patch.title !== undefined) thought.title = patch.title;
   if (patch.description !== undefined) thought.description = patch.description;
   await thought.save();
@@ -152,16 +161,17 @@ export const updateThought = async (
 
 export const setThoughtStatus = async (
   id: string,
+  ownerId: string,
   status: ThoughtStatus,
 ): Promise<ThoughtDocument> => {
-  const thought = await getThoughtOrThrow(id);
+  const thought = await getThoughtOrThrow(id, ownerId);
   thought.status = status;
   await thought.save();
   return thought;
 };
 
-export const softDeleteThought = async (id: string): Promise<void> => {
-  const thought = await getThoughtOrThrow(id);
+export const softDeleteThought = async (id: string, ownerId: string): Promise<void> => {
+  const thought = await getThoughtOrThrow(id, ownerId);
   const now = new Date();
 
   await Entry.updateMany(
@@ -174,8 +184,13 @@ export const softDeleteThought = async (id: string): Promise<void> => {
   );
 };
 
-export const restoreThought = async (id: string): Promise<ThoughtDocument> => {
-  const thought = await Thought.findById(id).setOptions({ withDeleted: true });
+export const restoreThought = async (
+  id: string,
+  ownerId: string,
+): Promise<ThoughtDocument> => {
+  const thought = await Thought.findOne({ _id: id, ownerId: owner(ownerId) }).setOptions({
+    withDeleted: true,
+  });
   if (!thought) throw notFoundError('Thought not found');
   if (thought.deletedAt === null) {
     throw badRequest('Thought is not deleted');
@@ -207,8 +222,11 @@ export interface ThoughtStats {
   byTag: { tagId: string; name: string; count: number }[];
 }
 
-export const getThoughtStats = async (id: string): Promise<ThoughtStats> => {
-  const thought = await getThoughtOrThrow(id);
+export const getThoughtStats = async (
+  id: string,
+  ownerId: string,
+): Promise<ThoughtStats> => {
+  const thought = await getThoughtOrThrow(id, ownerId);
   const thoughtId = thought._id;
 
   const [result] = (await Entry.aggregate([

@@ -6,9 +6,13 @@ export interface ApiResponse<T> {
 
 /**
  * Tiny JSON HTTP client for integration tests. `raw` is exposed for the cases
- * that need multipart, redirects, or header inspection.
+ * that need multipart, redirects, or header inspection. Pass a bearer `token`
+ * to authenticate every request.
  */
-export const makeClient = (baseUrl: string) => {
+export const makeClient = (baseUrl: string, token?: string) => {
+  const authHeader = (): Record<string, string> =>
+    token ? { authorization: `Bearer ${token}` } : {};
+
   const request = async <T = unknown>(
     method: string,
     path: string,
@@ -16,7 +20,10 @@ export const makeClient = (baseUrl: string) => {
   ): Promise<ApiResponse<T>> => {
     const res = await fetch(`${baseUrl}${path}`, {
       method,
-      headers: body === undefined ? {} : { 'content-type': 'application/json' },
+      headers: {
+        ...authHeader(),
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      },
       body: body === undefined ? undefined : JSON.stringify(body),
       redirect: 'manual',
     });
@@ -34,7 +41,11 @@ export const makeClient = (baseUrl: string) => {
     patch: <T = unknown>(path: string, body?: unknown) => request<T>('PATCH', path, body),
     put: <T = unknown>(path: string, body?: unknown) => request<T>('PUT', path, body),
     del: <T = unknown>(path: string) => request<T>('DELETE', path),
-    raw: (path: string, init?: RequestInit) => fetch(`${baseUrl}${path}`, init),
+    raw: (path: string, init?: RequestInit) =>
+      fetch(`${baseUrl}${path}`, {
+        ...init,
+        headers: { ...authHeader(), ...(init?.headers ?? {}) },
+      }),
   };
 };
 

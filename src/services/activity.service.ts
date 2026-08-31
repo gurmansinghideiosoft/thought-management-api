@@ -19,9 +19,15 @@ export interface ActivityPage {
   nextCursor: string | null;
 }
 
-/** Cross-thought feed of entries ordered by date. */
-export const getActivityFeed = async (params: ActivityParams): Promise<ActivityPage> => {
-  const filter: Record<string, unknown> = { deletedAt: null };
+/** Cross-thought feed of one user's entries ordered by date. */
+export const getActivityFeed = async (
+  ownerId: string,
+  params: ActivityParams,
+): Promise<ActivityPage> => {
+  const filter: Record<string, unknown> = {
+    ownerId: new Types.ObjectId(ownerId),
+    deletedAt: null,
+  };
 
   if (params.from || params.to) {
     filter.createdAt = {
