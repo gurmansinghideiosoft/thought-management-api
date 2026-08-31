@@ -39,6 +39,22 @@ dist/                compiled output from `npm run build` (git-ignored)
 
 ---
 
+## What runs automatically
+
+You do not have to remember every check — three layers enforce them:
+
+| Layer                                                         | Trigger             | Runs                                                                         | Bypass (emergencies only) |
+| ------------------------------------------------------------- | ------------------- | ---------------------------------------------------------------------------- | ------------------------- |
+| **pre-commit** hook                                           | `git commit`        | `lint-staged` — `eslint --fix` + `prettier --write` on **staged** files only | `git commit --no-verify`  |
+| **pre-push** hook                                             | `git push`          | `npm run check` — the full gate                                              | `git push --no-verify`    |
+| **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)) | push / PR to `main` | `npm run check` on a clean `npm ci` install                                  | — (must pass to merge)    |
+
+Hooks are installed automatically by `npm install` (via husky's `prepare` script). If they ever stop firing, run `npm run prepare`.
+
+A bypassed hook still has to face CI — `--no-verify` buys you minutes, not a merge.
+
+---
+
 ## The flow for any change
 
 ### 1. Sync `main`
