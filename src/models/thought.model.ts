@@ -17,6 +17,8 @@ export interface ThoughtTag {
 }
 
 export interface ThoughtAttrs {
+  /** The user who owns this thought. Every query is scoped by it. */
+  ownerId: Types.ObjectId;
   title: string;
   description: string;
   status: ThoughtStatus;
@@ -45,6 +47,7 @@ withJsonId(tagSchema);
 
 const thoughtSchema = new Schema(
   {
+    ownerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     title: { type: String, required: true, trim: true, minlength: 1, maxlength: 200 },
     description: { type: String, default: '', maxlength: 20_000 },
     status: { type: String, enum: THOUGHT_STATUSES, default: 'active' },
@@ -58,10 +61,11 @@ const thoughtSchema = new Schema(
 thoughtSchema.plugin(softDeletePlugin);
 withJsonId(thoughtSchema);
 
-// "By project + by date" and the two list sorts.
-thoughtSchema.index({ status: 1, createdAt: -1 });
-thoughtSchema.index({ status: 1, lastEntryAt: -1 });
-// Name / description search.
+// Per-owner list, the two sorts, and trash lookups.
+thoughtSchema.index({ ownerId: 1, status: 1, createdAt: -1 });
+thoughtSchema.index({ ownerId: 1, status: 1, lastEntryAt: -1 });
+thoughtSchema.index({ ownerId: 1, deletedAt: 1 });
+// Name / description search (combined with an ownerId filter at query time).
 thoughtSchema.index({ title: 'text', description: 'text' });
 
 export const Thought = model<ThoughtAttrs>('Thought', thoughtSchema);

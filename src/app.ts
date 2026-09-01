@@ -5,9 +5,15 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 
 import config from './config/index.ts';
+import { requireAuth } from './middleware/auth.ts';
 import { errorHandler, notFound } from './middleware/errorHandler.ts';
 import activityRouter from './routes/activity.ts';
+import authRouter from './routes/auth.ts';
 import healthRouter from './routes/health.ts';
+import journalRouter from './routes/journal.ts';
+import routineRouter from './routes/routine.ts';
+import taskTagsRouter from './routes/taskTags.ts';
+import tasksRouter from './routes/tasks.ts';
 import thoughtsRouter from './routes/thoughts.ts';
 
 /**
@@ -41,21 +47,25 @@ app.use(
   }),
 );
 
-// Throttle abusive clients. Applied to every route; tighten per-route later for
-// expensive or auth endpoints.
-app.use(
-  rateLimit({
-    windowMs: config.rateLimit.windowMs,
-    limit: config.rateLimit.max,
-    standardHeaders: 'draft-7',
-    legacyHeaders: false,
-  }),
-);
+// Throttle abusive clients. Applied to every route; tighter per-route limits sit
+// on the auth endpoints below. Disabled under the test runner so a busy suite
+// doesn't trip it.
+if (!config.isTest) {
+  app.use(
+    rateLimit({
+      windowMs: config.rateLimit.windowMs,
+      limit: config.rateLimit.max,
+      standardHeaders: 'draft-7',
+      legacyHeaders: false,
+    }),
+  );
+}
 
 // --- Request parsing ---------------------------------------------------
 
-// Cap body size so a single large payload can't exhaust memory.
-app.use(express.json({ limit: '10kb' }));
+// Cap body size so a single large payload can't exhaust memory. Journal
+// entries carry a rich-text document, so the ceiling is 1 MB rather than a few kB.
+app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
 // --- Logging ---------------------------------------------------------
@@ -68,8 +78,28 @@ if (!config.isTest) {
 // --- Routes --------------------------------------------------------
 
 app.use('/health', healthRouter);
-app.use('/api/thoughts', thoughtsRouter);
-app.use('/api/activity', activityRouter);
+
+// Auth — public, but with a tighter limiter on the credential endpoints to slow
+// brute-force / enumeration attempts.
+if (!config.isTest) {
+  const authLimiter = rateLimit({
+    windowMs: config.rateLimit.windowMs,
+    limit: config.auth.rateLimitMax,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+  });
+  app.use('/api/auth/login', authLimiter);
+  app.use('/api/auth/register', authLimiter);
+}
+app.use('/api/auth', authRouter);
+
+// Everything below requires a valid access token.
+app.use('/api/thoughts', requireAuth, thoughtsRouter);
+app.use('/api/activity', requireAuth, activityRouter);
+app.use('/api/tasks', requireAuth, tasksRouter);
+app.use('/api/task-tags', requireAuth, taskTagsRouter);
+app.use('/api/routine', requireAuth, routineRouter);
+app.use('/api/journal', requireAuth, journalRouter);
 
 // --- Fallbacks ---------------------------------------------------
 

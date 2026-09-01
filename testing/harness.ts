@@ -1,12 +1,27 @@
+import { randomUUID } from 'node:crypto';
 import { after, before, beforeEach } from 'node:test';
 
 import { memoryStorage } from '../src/storage/index.ts';
+import { type ApiClient, makeClient } from './api.ts';
 import { clearTestDb, startTestDb, stopTestDb } from './db.ts';
 import { createTestServer, type TestServer } from './server.ts';
+
+export interface AuthedClient {
+  userId: string;
+  accessToken: string;
+  refreshToken: string;
+  /** A `makeClient` that sends `Authorization: Bearer <accessToken>`. */
+  api: ApiClient;
+}
 
 export interface TestApp {
   /** Base URL of the running app, e.g. http://127.0.0.1:53124 */
   readonly url: string;
+  /** Register a fresh user and return an authenticated client for them. */
+  registerAndClient(overrides?: {
+    email?: string;
+    password?: string;
+  }): Promise<AuthedClient>;
 }
 
 /**
@@ -14,10 +29,6 @@ export interface TestApp {
  *   - `before`     — start the in-memory DB, then the HTTP server
  *   - `beforeEach` — wipe the DB and the in-memory file store
  *   - `after`      — stop the server and the DB
- *
- * Usage:
- *   const app = useTestApp();
- *   test('...', async () => { await fetch(`${app.url}/api/thoughts`); });
  */
 export const useTestApp = (): TestApp => {
   let server: TestServer | undefined;
@@ -37,10 +48,34 @@ export const useTestApp = (): TestApp => {
     await stopTestDb();
   });
 
+  const url = (): string => {
+    if (!server) throw new Error('Test server not started yet');
+    return server.url;
+  };
+
   return {
     get url(): string {
-      if (!server) throw new Error('Test server not started yet');
-      return server.url;
+      return url();
+    },
+    async registerAndClient(overrides): Promise<AuthedClient> {
+      const anon = makeClient(url());
+      const res = await anon.post<{
+        user: { id: string };
+        accessToken: string;
+        refreshToken: string;
+      }>('/api/auth/register', {
+        email: overrides?.email ?? `user-${randomUUID()}@test.dev`,
+        password: overrides?.password ?? 'correct horse battery',
+      });
+      if (res.status !== 201) {
+        throw new Error(`registerAndClient failed: ${String(res.status)}`);
+      }
+      return {
+        userId: res.body.user.id,
+        accessToken: res.body.accessToken,
+        refreshToken: res.body.refreshToken,
+        api: makeClient(url(), res.body.accessToken),
+      };
     },
   };
 };

@@ -24,6 +24,8 @@ export interface EntryFile {
 
 export interface EntryAttrs {
   thoughtId: Types.ObjectId;
+  /** Copied from the parent thought so the activity feed is one indexed query. */
+  ownerId: Types.ObjectId;
   kind: EntryKind;
   /** Note text, or an optional caption for link/file entries. */
   body: string;
@@ -67,6 +69,7 @@ const entrySchema = new Schema(
       ref: 'Thought',
       required: true,
     },
+    ownerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     kind: { type: String, enum: ENTRY_KINDS, required: true },
     body: { type: String, default: '', maxlength: 20_000 },
     link: { type: linkSchema },
@@ -86,8 +89,8 @@ entrySchema.index({ thoughtId: 1, createdAt: -1, _id: -1 });
 entrySchema.index({ thoughtId: 1, tagIds: 1, createdAt: -1 });
 entrySchema.index({ thoughtId: 1, starred: 1, createdAt: -1 });
 entrySchema.index({ thoughtId: 1, kind: 1, createdAt: -1 });
-// Global, cross-thought activity feed by date.
-entrySchema.index({ createdAt: -1, _id: -1 });
+// Per-owner cross-thought activity feed by date.
+entrySchema.index({ ownerId: 1, createdAt: -1, _id: -1 });
 // Full-text search within a thought's entries.
 entrySchema.index({ body: 'text', 'link.title': 'text' });
 

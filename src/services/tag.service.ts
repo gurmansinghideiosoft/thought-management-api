@@ -34,8 +34,11 @@ const assertNameFree = (tags: ThoughtTag[], name: string, exceptId?: string): vo
   }
 };
 
-export const listTags = async (thoughtId: string): Promise<TagWithCount[]> => {
-  const thought = await getThoughtOrThrow(thoughtId);
+export const listTags = async (
+  thoughtId: string,
+  ownerId: string,
+): Promise<TagWithCount[]> => {
+  const thought = await getThoughtOrThrow(thoughtId, ownerId);
 
   const counts = (await Entry.aggregate([
     { $match: { thoughtId: thought._id, deletedAt: null } },
@@ -53,9 +56,10 @@ export const listTags = async (thoughtId: string): Promise<TagWithCount[]> => {
 
 export const createTag = async (
   thoughtId: string,
+  ownerId: string,
   input: { name: string; color?: string },
 ): Promise<TagView> => {
-  const thought = await getThoughtOrThrow(thoughtId);
+  const thought = await getThoughtOrThrow(thoughtId, ownerId);
   assertNameFree(thought.tags, input.name);
 
   const tag: ThoughtTag = {
@@ -71,10 +75,11 @@ export const createTag = async (
 
 export const updateTag = async (
   thoughtId: string,
+  ownerId: string,
   tagId: string,
   patch: { name?: string; color?: string },
 ): Promise<TagView> => {
-  const thought = await getThoughtOrThrow(thoughtId);
+  const thought = await getThoughtOrThrow(thoughtId, ownerId);
   const tag = thought.tags.find((candidate) => String(candidate._id) === tagId);
   if (!tag) throw notFoundError('Tag not found');
 
@@ -89,8 +94,12 @@ export const updateTag = async (
   return toView(tag);
 };
 
-export const deleteTag = async (thoughtId: string, tagId: string): Promise<void> => {
-  const thought = await getThoughtOrThrow(thoughtId);
+export const deleteTag = async (
+  thoughtId: string,
+  ownerId: string,
+  tagId: string,
+): Promise<void> => {
+  const thought = await getThoughtOrThrow(thoughtId, ownerId);
   const exists = thought.tags.some((tag) => String(tag._id) === tagId);
   if (!exists) throw notFoundError('Tag not found');
 
