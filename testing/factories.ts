@@ -12,6 +12,11 @@ import {
   type ThoughtDocument,
   type ThoughtStatus,
 } from '../src/models/thought.model.ts';
+import {
+  ThoughtInvite,
+  type ThoughtInviteDocument,
+  type InviteStatus,
+} from '../src/models/thoughtInvite.model.ts';
 import { User, type UserDocument } from '../src/models/user.model.ts';
 
 export const createUser = (
@@ -44,6 +49,25 @@ export const seedThought = (
     title: 'Seed thought',
     description: '',
     ...overrides,
+  });
+
+interface InviteOverrides {
+  email?: string;
+  inviteeUserId?: Types.ObjectId | string | null;
+  status?: InviteStatus;
+}
+
+export const seedInvite = (
+  thoughtId: Types.ObjectId | string,
+  inviterId: Types.ObjectId | string,
+  overrides: InviteOverrides = {},
+): Promise<ThoughtInviteDocument> =>
+  ThoughtInvite.create({
+    thoughtId,
+    inviterId,
+    email: overrides.email ?? `invitee-${randomUUID()}@test.dev`,
+    inviteeUserId: overrides.inviteeUserId ?? null,
+    status: overrides.status ?? 'pending',
   });
 
 interface EntryOverrides {

@@ -1,13 +1,20 @@
 import { Types } from 'mongoose';
 
 import { badRequest, conflict, notFoundError } from '../errors.ts';
+import { type PublicUser, toPublicUser } from '../lib/publicUser.ts';
 import { Entry, type EntryKind } from '../models/entry.model.ts';
 import {
   Thought,
   type ThoughtDocument,
   type ThoughtStatus,
 } from '../models/thought.model.ts';
+import { User } from '../models/user.model.ts';
 import { escapeRegExp } from '../schemas/common.ts';
+import {
+  acceptedThoughtIdsFor,
+  assertParticipant,
+  type ThoughtRole,
+} from './thoughtShare.service.ts';
 
 export type ThoughtSort = 'recent' | 'created' | 'oldest' | 'title';
 
@@ -34,6 +41,20 @@ export interface ListThoughtsParams {
 
 export interface ThoughtListResult {
   items: ThoughtDocument[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+/** A list row plus how the caller relates to it. */
+export type ThoughtListItem = Record<string, unknown> & {
+  role: ThoughtRole;
+  sharedBy?: PublicUser;
+};
+
+export interface ThoughtListPage {
+  items: ThoughtListItem[];
   page: number;
   limit: number;
   total: number;
@@ -87,11 +108,31 @@ export const getThoughtOrThrow = async (
   return thought;
 };
 
+/** Read a thought as the owner or an accepted collaborator; carries `role`. */
+export const getThoughtForReader = async (
+  id: string,
+  userId: string,
+): Promise<ThoughtListItem> => {
+  const { thought, role } = await assertParticipant(id, userId);
+  const json = thought.toJSON() as unknown as Record<string, unknown>;
+  if (role === 'owner') return { ...json, role };
+  const foreignOwner = await User.findById(thought.ownerId);
+  return {
+    ...json,
+    role,
+    ...(foreignOwner ? { sharedBy: toPublicUser(foreignOwner) } : {}),
+  };
+};
+
 export const listThoughts = async (
-  ownerId: string,
+  userId: string,
   params: ListThoughtsParams,
-): Promise<ThoughtListResult> => {
-  const filter: Record<string, unknown> = { ownerId: owner(ownerId) };
+): Promise<ThoughtListPage> => {
+  const sharedIds = await acceptedThoughtIdsFor(userId);
+
+  const filter: Record<string, unknown> = {
+    $or: [{ ownerId: owner(userId) }, { _id: { $in: sharedIds } }],
+  };
 
   if (params.status) filter.status = params.status;
 
@@ -108,10 +149,30 @@ export const listThoughts = async (
 
   const skip = (params.page - 1) * params.limit;
 
-  const [items, total] = await Promise.all([
+  const [docs, total] = await Promise.all([
     Thought.find(filter).sort(SORT_SPECS[params.sort]).skip(skip).limit(params.limit),
     Thought.countDocuments(filter),
   ]);
+
+  // Decorate shared rows with their owner (for a "shared by @x" hint).
+  const foreignOwnerIds = docs
+    .filter((d) => String(d.ownerId) !== userId)
+    .map((d) => d.ownerId);
+  const owners = foreignOwnerIds.length
+    ? await User.find({ _id: { $in: foreignOwnerIds } })
+    : [];
+  const ownerById = new Map(owners.map((u) => [String(u._id), u]));
+
+  const items: ThoughtListItem[] = docs.map((doc) => {
+    const json = doc.toJSON() as unknown as Record<string, unknown>;
+    if (String(doc.ownerId) === userId) return { ...json, role: 'owner' };
+    const foreignOwner = ownerById.get(String(doc.ownerId));
+    return {
+      ...json,
+      role: 'collaborator',
+      ...(foreignOwner ? { sharedBy: toPublicUser(foreignOwner) } : {}),
+    };
+  });
 
   return {
     items,
@@ -224,9 +285,9 @@ export interface ThoughtStats {
 
 export const getThoughtStats = async (
   id: string,
-  ownerId: string,
+  userId: string,
 ): Promise<ThoughtStats> => {
-  const thought = await getThoughtOrThrow(id, ownerId);
+  const { thought } = await assertParticipant(id, userId);
   const thoughtId = thought._id;
 
   const [result] = (await Entry.aggregate([

@@ -3,6 +3,7 @@ import { signAccess, signRefresh, verifyRefresh } from '../lib/jwt.ts';
 import { hashPassword, verifyPassword } from '../lib/password.ts';
 import { TokenDenylist } from '../models/tokenDenylist.model.ts';
 import { User, type UserDocument } from '../models/user.model.ts';
+import { bindPendingInvites } from './thoughtShare.service.ts';
 
 export interface AuthTokens {
   accessToken: string;
@@ -63,6 +64,8 @@ export const register = async (input: {
     passwordHash: await hashPassword(input.password),
     name: input.name ?? '',
   });
+  // Attach any thought invites that were sent to this email before signup.
+  await bindPendingInvites(user);
   return { user, ...issueTokens(String(user._id)) };
 };
 

@@ -43,11 +43,25 @@ the client walks them through picking one). Everything under `/api/thoughts`,
 `/api/journal` sits behind
 `requireAuth`, which verifies the `Bearer` access JWT, rejects blacklisted `jti`s
 (`TokenDenylist`, a TTL collection), and sets `req.auth`. Handlers read the user
-with `getAuth(req)` and pass `userId` into every service call. Every thought /
-entry query is filtered by `ownerId`; a thought that exists but isn't yours
+with `getAuth(req)` and pass `userId` into every service call. Writes to a thought
+and its entries stay filtered by `ownerId`; a thought that exists but isn't yours
 returns **404**, never 403. Refresh tokens rotate — using an old one 401s. In
 tests, `useTestApp().registerAndClient()` returns an authed `api` client;
 `seedThought(ownerId, …)` / `seedEntry(thoughtId, ownerId, …)` need the owner.
+
+**Sharing a thought:** the owner invites emails via `POST
+/api/thoughts/:id/invites`; a `ThoughtInvite` row (`pending` → `accepted` /
+`declined` / `revoked`) is the record. An invite to an unknown email is stored
+and bound to the account when it registers (`bindPendingInvites`, called from
+`register`). **Participants = the owner + every user with an `accepted`
+invite.** `assertParticipant(thoughtId, userId)` in
+`src/services/thoughtShare.service.ts` is the read gate — it returns
+`{ thought, role: 'owner' | 'collaborator' }` or 404. Read paths
+(`GET /api/thoughts/:id`, `/stats`, `/entries*`) use it; **all write paths keep
+`getThoughtOrThrow` (owner-only)** — collaborators are view + discuss only.
+`GET /api/thoughts` and `GET /api/thoughts/:id` return `role` (and `sharedBy`
+for shared rows). Invitee side: `GET /api/invites`, `POST
+/api/invites/:id/accept | decline`.
 
 **Task shapes & the day view:** a `Task` is either `kind: 'single'` (one
 `date`) or `kind: 'range'` (`startDate…endDate`). A range runs in one of two
