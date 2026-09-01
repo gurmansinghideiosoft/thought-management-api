@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 
 import { notFoundError } from '../errors.ts';
 import { decodeCursor, encodeCursor } from '../lib/cursor.ts';
+import { addDays, monthBounds, todayUtc } from '../lib/day.ts';
 import {
   JournalEntry,
   type JournalContent,
@@ -118,4 +119,78 @@ export const deleteJournal = async (ownerId: string, id: string): Promise<void> 
     { _id: entry._id },
     { $set: { deletedAt: new Date(), deletedReason: 'direct' } },
   );
+};
+
+// --- streak & calendar -------------------------------------------------
+
+export interface JournalStreak {
+  /** Consecutive days written, ending today (or yesterday if not yet written). */
+  current: number;
+  /** Longest run of consecutive days ever written. */
+  longest: number;
+  /** Whether `today` already has an entry. */
+  writtenToday: boolean;
+}
+
+/**
+ * The writing streak. `today` (client-local `YYYY-MM-DD`) keeps "wrote today"
+ * and "streak still alive" correct across time zones; defaults to server UTC.
+ */
+export const getStreak = async (
+  ownerId: string,
+  today: string = todayUtc(),
+): Promise<JournalStreak> => {
+  const rows = await JournalEntry.find({ ownerId: owner(ownerId) })
+    .select('date')
+    .sort({ date: -1 });
+  // Unique days, newest first (the partial-unique index already dedupes, but be safe).
+  const days = [...new Set(rows.map((r) => r.date))];
+  if (days.length === 0) return { current: 0, longest: 0, writtenToday: false };
+
+  const writtenToday = days[0] === today;
+  const yesterday = addDays(today, -1);
+
+  let current = 0;
+  let anchor: string | null = null;
+  if (days[0] === today) anchor = today;
+  else if (days[0] === yesterday) anchor = yesterday;
+  if (anchor) {
+    let expect = anchor;
+    for (const day of days) {
+      if (day === expect) {
+        current += 1;
+        expect = addDays(expect, -1);
+      } else if (day < expect) {
+        break;
+      }
+    }
+  }
+
+  let longest = 1;
+  let run = 1;
+  for (let i = 1; i < days.length; i += 1) {
+    if (days[i] === addDays(days[i - 1]!, -1)) {
+      run += 1;
+      longest = Math.max(longest, run);
+    } else {
+      run = 1;
+    }
+  }
+
+  return { current, longest, writtenToday };
+};
+
+/** The days of `month` (`YYYY-MM`) that have an entry. */
+export const getMonthDates = async (
+  ownerId: string,
+  month: string,
+): Promise<string[]> => {
+  const { from, to } = monthBounds(month);
+  const rows = await JournalEntry.find({
+    ownerId: owner(ownerId),
+    date: { $gte: from, $lte: to },
+  })
+    .select('date')
+    .sort({ date: 1 });
+  return rows.map((r) => r.date);
 };

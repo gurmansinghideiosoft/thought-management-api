@@ -92,6 +92,14 @@ in-process map (single-process only — multi-process would need the socket.io
 Redis adapter). `src/realtime/realtime.test.ts` runs its own
 `http.createServer(app)` + `socket.io-client`.
 
+**Journal:** one entry per `date` (`YYYY-MM-DD`), soft-deleted, keyset-paged
+newest-first. `GET /api/journal/streak?today=` returns
+`{ current, longest, writtenToday }` — `current` counts back from `today` (or
+yesterday if today isn't written yet), so a streak isn't "lost" until a whole
+day is missed; pass the client-local `today` so time zones line up.
+`GET /api/journal/calendar?month=YYYY-MM` → `{ month, dates: [] }` of the days
+that have an entry, for the picker grid.
+
 **Task shapes & the day view:** a `Task` is either `kind: 'single'` (one
 `date`) or `kind: 'range'` (`startDate…endDate`). A range runs in one of two
 modes: `once` (one task shown across the whole window, completed once) or
