@@ -1,7 +1,7 @@
 import cors from 'cors';
-import express from 'express';
+import express, { type RequestHandler } from 'express';
 import { rateLimit } from 'express-rate-limit';
-import helmet from 'helmet';
+import helmetImport from 'helmet';
 import morgan from 'morgan';
 
 import config from './config/index.ts';
@@ -17,6 +17,17 @@ import routineRouter from './routes/routine.ts';
 import taskTagsRouter from './routes/taskTags.ts';
 import tasksRouter from './routes/tasks.ts';
 import thoughtsRouter from './routes/thoughts.ts';
+
+/**
+ * `helmet@8` ships no ESM type declaration and its `package.json` `exports`
+ * field has no `types` condition, so under strict `nodenext` resolution the
+ * default import can resolve to a non-callable *namespace* on toolchains that
+ * differ from this repo's pinned TypeScript (e.g. a CI runner). The runtime
+ * value is always the middleware factory, so pin the shape here.
+ */
+const helmet = helmetImport as unknown as (
+  options?: Record<string, unknown>,
+) => RequestHandler;
 
 /**
  * Builds and configures the Express application.
