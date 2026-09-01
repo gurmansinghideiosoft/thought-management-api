@@ -1,6 +1,7 @@
 import { Router } from 'express';
 
 import { getAuth } from '../middleware/auth.ts';
+import * as conversations from '../services/conversation.service.ts';
 import * as thoughts from '../services/thought.service.ts';
 import entriesRouter from './entries.ts';
 import tagsRouter from './tags.ts';
@@ -60,6 +61,13 @@ router.get('/:id/stats', async (req, res) => {
   const { userId } = getAuth(req);
   const { id } = idParams.parse(req.params);
   res.json(await thoughts.getThoughtStats(id, userId));
+});
+
+// The discussion thread shared by everyone on this thought.
+router.get('/:id/conversation', async (req, res) => {
+  const { userId } = getAuth(req);
+  const { id } = idParams.parse(req.params);
+  res.json(await conversations.getOrCreateThoughtConversation(id, userId));
 });
 
 router.patch('/:id', async (req, res) => {

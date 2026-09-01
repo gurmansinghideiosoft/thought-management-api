@@ -63,6 +63,17 @@ invite.** `assertParticipant(thoughtId, userId)` in
 for shared rows). Invitee side: `GET /api/invites`, `POST
 /api/invites/:id/accept | decline`.
 
+**Messaging:** a `Conversation` is either `kind: 'dm'` (keyed by `dmKey` = the
+two sorted user ids) or `kind: 'thought'` (keyed by `thoughtId`, its members
+kept in sync with the thought's participants). Both are created lazily —
+`POST /api/conversations/dm { username }` and `GET
+/api/thoughts/:id/conversation`. `Message` rows are keyset-paginated
+oldest-first exactly like the entry timeline (`src/lib/cursor.ts`), fetched
+`?before=<cursor>` for older history. Per-member `reads[]` on the conversation
+drives `unreadCount` in `GET /api/conversations`; `POST
+/api/conversations/:id/read` stamps it. `assertMember(conversationId, userId)`
+is the gate (404 otherwise); an author can soft-delete their own message.
+
 **Task shapes & the day view:** a `Task` is either `kind: 'single'` (one
 `date`) or `kind: 'range'` (`startDate…endDate`). A range runs in one of two
 modes: `once` (one task shown across the whole window, completed once) or

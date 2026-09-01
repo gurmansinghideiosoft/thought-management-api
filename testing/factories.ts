@@ -2,8 +2,14 @@ import { randomUUID } from 'node:crypto';
 
 import { Types } from 'mongoose';
 
+import {
+  Conversation,
+  type ConversationDocument,
+  type ConversationKind,
+} from '../src/models/conversation.model.ts';
 import { Entry, type EntryDocument, type EntryKind } from '../src/models/entry.model.ts';
 import { JournalEntry } from '../src/models/journal.model.ts';
+import { Message, type MessageDocument } from '../src/models/message.model.ts';
 import { Routine } from '../src/models/routine.model.ts';
 import { Task, type TaskDocument, type TaskStatus } from '../src/models/task.model.ts';
 import { TaskTag, type TaskTagDocument } from '../src/models/taskTag.model.ts';
@@ -181,3 +187,28 @@ export const seedRoutine = (
       activeTo: it.activeTo ?? null,
     })),
   });
+
+interface ConversationOverrides {
+  kind?: ConversationKind;
+  thoughtId?: Types.ObjectId | string | null;
+  dmKey?: string | null;
+}
+
+export const seedConversation = (
+  memberIds: (Types.ObjectId | string)[],
+  overrides: ConversationOverrides = {},
+): Promise<ConversationDocument> =>
+  Conversation.create({
+    kind: overrides.kind ?? 'dm',
+    thoughtId: overrides.thoughtId ?? null,
+    dmKey:
+      overrides.dmKey ??
+      (overrides.kind === 'thought' ? null : memberIds.map(String).sort().join(':')),
+    memberIds,
+  });
+
+export const seedMessage = (
+  conversationId: Types.ObjectId | string,
+  authorId: Types.ObjectId | string,
+  body = 'seeded message',
+): Promise<MessageDocument> => Message.create({ conversationId, authorId, body });
