@@ -34,9 +34,13 @@ dist/                compiled output from `npm run build` (git-ignored)
 all DB access and business rules; `models` only define shape + indexes. A route
 never touches a Mongoose model directly; a service never reads `req`.
 
-**Auth & ownership:** `/api/auth/*` is public (`register`, `login`, `refresh`,
-`logout`, `me`); everything under `/api/thoughts`, `/api/activity`, `/api/tasks`,
-`/api/task-tags`, `/api/routine` and `/api/journal` sits behind
+**Auth & ownership:** `/api/auth/*` is public except `me` (`GET` / `PATCH`,
+behind `requireAuth`); the rest are `register`, `login`, `refresh`, `logout`.
+`register` requires a unique `username` (`a-z0-9_`, 3–30); `PATCH /api/auth/me`
+sets or renames it (accounts created before usernames existed carry `null` until
+the client walks them through picking one). Everything under `/api/thoughts`,
+`/api/activity`, `/api/tasks`, `/api/task-tags`, `/api/routine` and
+`/api/journal` sits behind
 `requireAuth`, which verifies the `Bearer` access JWT, rejects blacklisted `jti`s
 (`TokenDenylist`, a TTL collection), and sets `req.auth`. Handlers read the user
 with `getAuth(req)` and pass `userId` into every service call. Every thought /

@@ -8,28 +8,46 @@ const app = useTestApp();
 const anon = () => makeClient(app.url);
 
 interface AuthBody {
-  user: { id: string; email: string; name: string; passwordHash?: string };
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    username: string | null;
+    passwordHash?: string;
+  };
   accessToken: string;
   refreshToken: string;
 }
 
-const register = (email = 'a@b.com', password = 'password123') =>
-  anon().post<AuthBody>('/api/auth/register', { email, password });
+/** Derive a schema-valid username from the email local part. */
+const handleFor = (email: string) =>
+  `${email.split('@')[0]?.replace(/[^a-z0-9_]/gi, '') ?? 'user'}_acct`.toLowerCase();
+
+const register = (email = 'a@b.com', password = 'password123', username?: string) =>
+  anon().post<AuthBody>('/api/auth/register', {
+    email,
+    password,
+    username: username ?? handleFor(email),
+  });
 
 test('POST /register creates an account and returns tokens (no hash leaked)', async () => {
   const res = await register('new@user.com', 'sup3rsecret');
   assert.equal(res.status, 201);
   assert.equal(res.body.user.email, 'new@user.com');
+  assert.equal(res.body.user.username, 'new_acct');
   assert.equal(res.body.user.passwordHash, undefined);
   assert.ok(res.body.accessToken && res.body.refreshToken);
 });
 
 test('POST /register is 409 on a duplicate email (case-insensitive)', async () => {
   await register('dup@user.com');
-  const again = await anon().post('/api/auth/register', {
-    email: 'DUP@user.com',
-    password: 'password123',
-  });
+  const again = await register('DUP@user.com', 'password123', 'someone_else');
+  assert.equal(again.status, 409);
+});
+
+test('POST /register is 409 on a duplicate username (case-insensitive)', async () => {
+  await register('first@user.com', 'password123', 'sharedhandle');
+  const again = await register('second@user.com', 'password123', 'SharedHandle');
   assert.equal(again.status, 409);
 });
 
@@ -37,8 +55,51 @@ test('POST /register rejects a short password with 400', async () => {
   const res = await anon().post('/api/auth/register', {
     email: 'x@y.com',
     password: 'short',
+    username: 'shortpw_acct',
   });
   assert.equal(res.status, 400);
+});
+
+test('POST /register requires a valid username', async () => {
+  assert.equal(
+    (
+      await anon().post('/api/auth/register', {
+        email: 'nou@user.com',
+        password: 'password123',
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await anon().post('/api/auth/register', {
+        email: 'badu@user.com',
+        password: 'password123',
+        username: 'no spaces!',
+      })
+    ).status,
+    400,
+  );
+});
+
+test('PATCH /me sets and renames the username', async () => {
+  const { body } = await register('profile@user.com', 'password123', 'profile_one');
+  const authed = makeClient(app.url, body.accessToken);
+
+  const renamed = await authed.patch<{ user: { username: string; name: string } }>(
+    '/api/auth/me',
+    { username: 'profile_two', name: 'Pro File' },
+  );
+  assert.equal(renamed.status, 200);
+  assert.equal(renamed.body.user.username, 'profile_two');
+  assert.equal(renamed.body.user.name, 'Pro File');
+
+  // Taking someone else's handle is a 409.
+  await register('other@user.com', 'password123', 'taken_handle');
+  assert.equal(
+    (await authed.patch('/api/auth/me', { username: 'taken_handle' })).status,
+    409,
+  );
 });
 
 test('POST /login succeeds with the right password, 401 otherwise', async () => {

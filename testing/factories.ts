@@ -15,13 +15,17 @@ import {
 import { User, type UserDocument } from '../src/models/user.model.ts';
 
 export const createUser = (
-  overrides: { email?: string; name?: string } = {},
+  overrides: { email?: string; name?: string; username?: string | null } = {},
 ): Promise<UserDocument> =>
   User.create({
     email: overrides.email ?? `user-${randomUUID()}@test.dev`,
     // not a real argon2 hash — fine for tests that never log in
     passwordHash: 'seeded',
     name: overrides.name ?? '',
+    username:
+      overrides.username === undefined
+        ? `u${randomUUID().replace(/-/g, '').slice(0, 12)}`
+        : overrides.username,
   });
 
 interface ThoughtOverrides {

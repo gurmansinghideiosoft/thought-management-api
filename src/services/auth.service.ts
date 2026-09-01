@@ -44,18 +44,47 @@ export const isBlacklisted = async (jti: string): Promise<boolean> =>
 export const register = async (input: {
   email: string;
   password: string;
+  username: string;
   name?: string;
 }): Promise<AuthResult> => {
   const email = input.email.toLowerCase();
+  const username = input.username.toLowerCase();
   if (await User.exists({ email })) {
     throw conflict('An account with that email already exists');
   }
+  if (await User.exists({ username })) {
+    throw conflict('That username is taken');
+  }
+
+  // A lost race on either unique index surfaces as a 409 via the error handler.
   const user = await User.create({
     email,
+    username,
     passwordHash: await hashPassword(input.password),
     name: input.name ?? '',
   });
   return { user, ...issueTokens(String(user._id)) };
+};
+
+/** Set or change the caller's username / display name. */
+export const updateProfile = async (
+  userId: string,
+  patch: { username?: string; name?: string },
+): Promise<UserDocument> => {
+  const user = await User.findById(userId);
+  if (!user) throw notFoundError('User not found');
+
+  if (patch.username !== undefined) {
+    const username = patch.username.toLowerCase();
+    if (username !== user.username) {
+      if (await User.exists({ username })) throw conflict('That username is taken');
+      user.username = username;
+    }
+  }
+  if (patch.name !== undefined) user.name = patch.name;
+
+  await user.save();
+  return user;
 };
 
 export const login = async (input: {
