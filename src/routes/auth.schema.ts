@@ -14,10 +14,15 @@ export const registerBody = z.object({
   name: z.string().trim().max(100).optional(),
 });
 
+/** A banner id from the frontend's fixed list, or `null` to reset to default. */
+const bannerId = z.string().trim().max(64).nullable();
+
 export const updateMeBody = z
   .object({
     username: username.optional(),
     name: z.string().trim().max(100).optional(),
+    homeBanner: bannerId.optional(),
+    journalBanner: bannerId.optional(),
   })
   .refine((v) => Object.keys(v).length > 0, {
     message: 'Provide at least one field to update',

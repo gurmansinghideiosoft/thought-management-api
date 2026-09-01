@@ -83,6 +83,33 @@ export const assertMember = async (
 const lastReadFor = (conv: ConversationDocument, userId: string): Date | null =>
   conv.reads.find((r) => String(r.userId) === userId)?.lastReadAt ?? null;
 
+/** The caller's chosen chat wallpaper for this conversation, if any. */
+const bgFor = (conv: ConversationDocument, userId: string): string | null =>
+  conv.backgrounds.find((b) => String(b.userId) === userId)?.banner ?? null;
+
+/** The shape the raw-doc endpoints (`dm`, thought conversation) return. */
+export interface ConversationView {
+  id: string;
+  kind: 'thought' | 'dm';
+  thoughtId: string | null;
+  memberIds: string[];
+  lastMessageAt: string;
+  /** The *caller's* wallpaper choice for this conversation. */
+  background: string | null;
+}
+
+export const toConversationView = (
+  conv: ConversationDocument,
+  userId: string,
+): ConversationView => ({
+  id: String(conv._id),
+  kind: conv.kind,
+  thoughtId: conv.thoughtId ? String(conv.thoughtId) : null,
+  memberIds: conv.memberIds.map(String),
+  lastMessageAt: conv.lastMessageAt.toISOString(),
+  background: bgFor(conv, userId),
+});
+
 export interface ConversationSummary {
   id: string;
   kind: 'thought' | 'dm';
@@ -93,6 +120,8 @@ export interface ConversationSummary {
   lastMessage: { body: string; authorId: string; at: string } | null;
   lastMessageAt: string;
   unreadCount: number;
+  /** The caller's chat-wallpaper choice for this conversation. */
+  background: string | null;
 }
 
 export const listConversations = async (
@@ -142,6 +171,7 @@ export const listConversations = async (
         : null,
       lastMessageAt: c.lastMessageAt.toISOString(),
       unreadCount: unreadCounts[i] ?? 0,
+      background: bgFor(c, userId),
     };
     if (c.kind === 'dm') {
       const peerId = c.memberIds.find((m) => String(m) !== userId);
@@ -168,6 +198,32 @@ export const markRead = async (conversationId: string, userId: string): Promise<
     await Conversation.updateOne(
       { _id: conversationId, 'reads.userId': { $ne: oid(userId) } },
       { $push: { reads: { userId: oid(userId), lastReadAt: now } } },
+    );
+  }
+};
+
+/** Set (or clear, with `null`) the caller's chat wallpaper for one conversation. */
+export const setBackground = async (
+  conversationId: string,
+  userId: string,
+  banner: string | null,
+): Promise<void> => {
+  await assertMember(conversationId, userId);
+  if (banner === null) {
+    await Conversation.updateOne(
+      { _id: conversationId },
+      { $pull: { backgrounds: { userId: oid(userId) } } },
+    );
+    return;
+  }
+  const res = await Conversation.updateOne(
+    { _id: conversationId, 'backgrounds.userId': oid(userId) },
+    { $set: { 'backgrounds.$.banner': banner } },
+  );
+  if (res.matchedCount === 0) {
+    await Conversation.updateOne(
+      { _id: conversationId, 'backgrounds.userId': { $ne: oid(userId) } },
+      { $push: { backgrounds: { userId: oid(userId), banner } } },
     );
   }
 };

@@ -16,3 +16,7 @@ export const messagesQuery = z.object({
 export const sendMessageBody = z.object({
   body: z.string().trim().min(1).max(4000),
 });
+
+export const backgroundBody = z.object({
+  banner: z.string().trim().max(64).nullable(),
+});

@@ -10,6 +10,12 @@ export interface ConversationRead {
   lastReadAt: Date;
 }
 
+/** A member's personal choice of chat wallpaper for this conversation. */
+export interface ConversationBackground {
+  userId: Types.ObjectId;
+  banner: string;
+}
+
 export interface LastMessagePreview {
   body: string;
   authorId: Types.ObjectId;
@@ -26,6 +32,7 @@ export interface ConversationAttrs {
   lastMessageAt: Date;
   lastMessage: LastMessagePreview | null;
   reads: ConversationRead[];
+  backgrounds: ConversationBackground[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -36,6 +43,14 @@ const readSchema = new Schema<ConversationRead>(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     lastReadAt: { type: Date, required: true },
+  },
+  { _id: false },
+);
+
+const backgroundSchema = new Schema<ConversationBackground>(
+  {
+    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    banner: { type: String, required: true, maxlength: 64 },
   },
   { _id: false },
 );
@@ -59,6 +74,7 @@ const conversationSchema = new Schema(
       default: null,
     },
     reads: { type: [readSchema], default: [] },
+    backgrounds: { type: [backgroundSchema], default: [] },
   },
   { timestamps: true },
 );

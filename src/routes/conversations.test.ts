@@ -18,6 +18,7 @@ interface Conversation {
   peer?: { username: string };
   thought?: { id: string; title: string };
   unreadCount: number;
+  background: string | null;
 }
 interface Message {
   id: string;
@@ -206,4 +207,51 @@ test('a thought conversation is one shared thread for its participants', async (
   const row = list.body.items.find((c) => c.id === first.body.id);
   assert.equal(row?.kind, 'thought');
   assert.equal(row?.thought?.title, 'Team plan');
+});
+
+test('chat wallpaper is per-user and per-conversation', async () => {
+  const conv = (
+    await alice.api.post<Conversation>('/api/conversations/dm', { username: 'bob_c' })
+  ).body;
+  assert.equal(conv.background, null);
+
+  // Alice sets a wallpaper; Bob is unaffected.
+  assert.equal(
+    (
+      await alice.api.put(`/api/conversations/${conv.id}/background`, {
+        banner: 'misty-lake',
+      })
+    ).status,
+    204,
+  );
+
+  const aliceList = await alice.api.get<{ items: Conversation[] }>('/api/conversations');
+  assert.equal(aliceList.body.items[0]?.background, 'misty-lake');
+  const bobList = await bob.api.get<{ items: Conversation[] }>('/api/conversations');
+  assert.equal(bobList.body.items[0]?.background, null);
+
+  // The dm endpoint echoes the caller's choice.
+  const reopened = await alice.api.post<Conversation>('/api/conversations/dm', {
+    username: 'bob_c',
+  });
+  assert.equal(reopened.body.background, 'misty-lake');
+
+  // null clears it.
+  await alice.api.put(`/api/conversations/${conv.id}/background`, { banner: null });
+  const cleared = await alice.api.get<{ items: Conversation[] }>('/api/conversations');
+  assert.equal(cleared.body.items[0]?.background, null);
+
+  // A non-member can't set one.
+  const carol = await app.registerAndClient({
+    email: 'carol@c.test',
+    username: 'carol_c',
+  });
+  assert.equal(
+    (
+      await carol.api.put(`/api/conversations/${conv.id}/background`, {
+        banner: 'misty-lake',
+      })
+    ).status,
+    404,
+  );
 });

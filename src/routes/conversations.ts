@@ -4,6 +4,7 @@ import { getAuth } from '../middleware/auth.ts';
 import * as conversations from '../services/conversation.service.ts';
 import * as messages from '../services/message.service.ts';
 import {
+  backgroundBody,
   conversationIdParams,
   dmBody,
   messageParams,
@@ -22,7 +23,7 @@ router.post('/dm', async (req, res) => {
   const { userId } = getAuth(req);
   const { username } = dmBody.parse(req.body);
   const conv = await conversations.getOrCreateDm(userId, username);
-  res.status(201).json(conv);
+  res.status(201).json(conversations.toConversationView(conv, userId));
 });
 
 router.get('/:id/messages', async (req, res) => {
@@ -44,6 +45,14 @@ router.post('/:id/read', async (req, res) => {
   const { userId } = getAuth(req);
   const { id } = conversationIdParams.parse(req.params);
   await conversations.markRead(id, userId);
+  res.status(204).end();
+});
+
+router.put('/:id/background', async (req, res) => {
+  const { userId } = getAuth(req);
+  const { id } = conversationIdParams.parse(req.params);
+  const { banner } = backgroundBody.parse(req.body);
+  await conversations.setBackground(id, userId, banner);
   res.status(204).end();
 });
 

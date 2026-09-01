@@ -39,7 +39,9 @@ never touches a Mongoose model directly; a service never reads `req`.
 behind `requireAuth`); the rest are `register`, `login`, `refresh`, `logout`.
 `register` requires a unique `username` (`a-z0-9_`, 3–30); `PATCH /api/auth/me`
 sets or renames it (accounts created before usernames existed carry `null` until
-the client walks them through picking one). Everything under `/api/thoughts`,
+the client walks them through picking one) and also carries `homeBanner` /
+`journalBanner` — opaque ids from the frontend's fixed hero-image list, `null` =
+default. Everything under `/api/thoughts`,
 `/api/activity`, `/api/tasks`, `/api/task-tags`, `/api/routine` and
 `/api/journal` sits behind
 `requireAuth`, which verifies the `Bearer` access JWT, rejects blacklisted `jti`s
@@ -72,8 +74,11 @@ kept in sync with the thought's participants). Both are created lazily —
 oldest-first exactly like the entry timeline (`src/lib/cursor.ts`), fetched
 `?before=<cursor>` for older history. Per-member `reads[]` on the conversation
 drives `unreadCount` in `GET /api/conversations`; `POST
-/api/conversations/:id/read` stamps it. `assertMember(conversationId, userId)`
-is the gate (404 otherwise); an author can soft-delete their own message.
+/api/conversations/:id/read` stamps it. A parallel per-member `backgrounds[]`
+holds each user's chat-wallpaper choice — `PUT /api/conversations/:id/background
+{ banner }` (`null` clears) — surfaced as `background` on every conversation the
+caller receives. `assertMember(conversationId, userId)` is the gate (404
+otherwise); an author can soft-delete their own message.
 
 **Realtime (`src/realtime/index.ts`):** `initRealtime(httpServer)` attaches a
 Socket.IO server (`src/server.ts` only — never in tests). REST is the source of

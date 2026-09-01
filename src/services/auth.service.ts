@@ -69,10 +69,15 @@ export const register = async (input: {
   return { user, ...issueTokens(String(user._id)) };
 };
 
-/** Set or change the caller's username / display name. */
+/** Set or change the caller's profile fields (username, name, banner choices). */
 export const updateProfile = async (
   userId: string,
-  patch: { username?: string; name?: string },
+  patch: {
+    username?: string;
+    name?: string;
+    homeBanner?: string | null;
+    journalBanner?: string | null;
+  },
 ): Promise<UserDocument> => {
   const user = await User.findById(userId);
   if (!user) throw notFoundError('User not found');
@@ -85,6 +90,8 @@ export const updateProfile = async (
     }
   }
   if (patch.name !== undefined) user.name = patch.name;
+  if (patch.homeBanner !== undefined) user.homeBanner = patch.homeBanner;
+  if (patch.journalBanner !== undefined) user.journalBanner = patch.journalBanner;
 
   await user.save();
   return user;

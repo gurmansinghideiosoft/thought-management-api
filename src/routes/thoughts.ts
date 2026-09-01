@@ -67,7 +67,8 @@ router.get('/:id/stats', async (req, res) => {
 router.get('/:id/conversation', async (req, res) => {
   const { userId } = getAuth(req);
   const { id } = idParams.parse(req.params);
-  res.json(await conversations.getOrCreateThoughtConversation(id, userId));
+  const conv = await conversations.getOrCreateThoughtConversation(id, userId);
+  res.json(conversations.toConversationView(conv, userId));
 });
 
 router.patch('/:id', async (req, res) => {

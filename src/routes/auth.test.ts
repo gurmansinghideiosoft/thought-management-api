@@ -102,6 +102,29 @@ test('PATCH /me sets and renames the username', async () => {
   );
 });
 
+test('PATCH /me stores the banner choices, null resets them', async () => {
+  const { body } = await register('banner@user.com', 'password123', 'banner_user');
+  const authed = makeClient(app.url, body.accessToken);
+
+  const set = await authed.patch<{ user: { homeBanner: string | null } }>(
+    '/api/auth/me',
+    { homeBanner: 'misty-lake', journalBanner: 'golden-field' },
+  );
+  assert.equal(set.body.user.homeBanner, 'misty-lake');
+
+  const me = await authed.get<{
+    user: { homeBanner: string | null; journalBanner: string | null };
+  }>('/api/auth/me');
+  assert.equal(me.body.user.homeBanner, 'misty-lake');
+  assert.equal(me.body.user.journalBanner, 'golden-field');
+
+  const cleared = await authed.patch<{ user: { homeBanner: string | null } }>(
+    '/api/auth/me',
+    { homeBanner: null },
+  );
+  assert.equal(cleared.body.user.homeBanner, null);
+});
+
 test('POST /login succeeds with the right password, 401 otherwise', async () => {
   await register('login@user.com', 'rightpassword');
 

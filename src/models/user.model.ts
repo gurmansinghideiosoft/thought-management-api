@@ -9,6 +9,9 @@ export interface UserAttrs {
    * before usernames existed — the client forces them to pick one on next load.
    */
   username: string | null;
+  /** Chosen hero-banner id (from the frontend's fixed list); `null` = default. */
+  homeBanner: string | null;
+  journalBanner: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -40,6 +43,8 @@ const userSchema = new Schema(
       match: /^[a-z0-9_]+$/,
       default: null,
     },
+    homeBanner: { type: String, maxlength: 64, default: null },
+    journalBanner: { type: String, maxlength: 64, default: null },
   },
   { timestamps: true },
 );
