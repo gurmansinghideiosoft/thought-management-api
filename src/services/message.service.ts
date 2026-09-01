@@ -6,6 +6,7 @@ import { type PublicUser, toPublicUser } from '../lib/publicUser.ts';
 import { Conversation } from '../models/conversation.model.ts';
 import { Message, type MessageDocument } from '../models/message.model.ts';
 import { User } from '../models/user.model.ts';
+import { getIo, roomForConversation, roomForUser } from '../realtime/index.ts';
 import { assertMember } from './conversation.service.ts';
 
 const oid = (id: string): Types.ObjectId => new Types.ObjectId(id);
@@ -98,7 +99,7 @@ export const sendMessage = async (
   userId: string,
   body: string,
 ): Promise<MessageView> => {
-  await assertMember(conversationId, userId);
+  const conv = await assertMember(conversationId, userId);
 
   const msg = await Message.create({
     conversationId: oid(conversationId),
@@ -117,10 +118,21 @@ export const sendMessage = async (
   );
 
   const author = await User.findById(userId);
-  return toView(
+  const view = toView(
     msg,
     author ? toPublicUser(author) : { id: userId, username: null, name: '' },
   );
+
+  // Push to anyone watching the thread, and nudge every member's inbox.
+  const io = getIo();
+  if (io) {
+    io.to(roomForConversation(conversationId)).emit('message:new', { message: view });
+    for (const memberId of conv.memberIds) {
+      io.to(roomForUser(String(memberId))).emit('conversation:bump', { conversationId });
+    }
+  }
+
+  return view;
 };
 
 export const deleteMessage = async (
@@ -138,4 +150,8 @@ export const deleteMessage = async (
   if (!msg) throw notFoundError('Message not found');
   msg.deletedAt = new Date();
   await msg.save();
+
+  getIo()
+    ?.to(roomForConversation(conversationId))
+    .emit('message:removed', { conversationId, messageId });
 };

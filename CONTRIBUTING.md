@@ -23,8 +23,9 @@ src/
   services/          business logic + every Mongoose query lives here
   routes/            thin HTTP handlers; <name>.schema.ts = its Zod schemas; <name>.test.ts alongside
   middleware/         error handler, multipart upload, requireAuth
+  realtime/          Socket.IO push layer — initRealtime(server), getIo() (server.ts only)
   storage/           StoragePort abstraction — S3Storage (prod) / MemoryStorage (dev + tests)
-  lib/               cursor (keyset pagination), mime (upload allow-list), jwt, password, day (YYYY-MM-DD math)
+  lib/               cursor (keyset pagination), mime (upload allow-list), jwt, password, day, publicUser
   schemas/common.ts  shared Zod pieces (objectId, dateString, paging)
 testing/             integration harness (in-memory DB + server), factories, api client
 dist/                compiled output from `npm run build` (git-ignored)
@@ -73,6 +74,18 @@ oldest-first exactly like the entry timeline (`src/lib/cursor.ts`), fetched
 drives `unreadCount` in `GET /api/conversations`; `POST
 /api/conversations/:id/read` stamps it. `assertMember(conversationId, userId)`
 is the gate (404 otherwise); an author can soft-delete their own message.
+
+**Realtime (`src/realtime/index.ts`):** `initRealtime(httpServer)` attaches a
+Socket.IO server (`src/server.ts` only — never in tests). REST is the source of
+truth for every write; the socket layer only **pushes** (`message:new`,
+`message:removed`, `conversation:bump`) and relays ephemeral `typing` /
+`presence`. Services emit through `getIo()?.…`, which is `null` under the test
+harness, so every REST path stays fully functional and testable without a
+socket. Handshake auth reuses `verifyAccess` + `isBlacklisted`; clients
+`conversation:join` a thread room after an `assertMember` check. Presence is an
+in-process map (single-process only — multi-process would need the socket.io
+Redis adapter). `src/realtime/realtime.test.ts` runs its own
+`http.createServer(app)` + `socket.io-client`.
 
 **Task shapes & the day view:** a `Task` is either `kind: 'single'` (one
 `date`) or `kind: 'range'` (`startDate…endDate`). A range runs in one of two
