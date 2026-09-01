@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { limitParam, objectId } from '../schemas/common.ts';
 
 export const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD');
+const monthOnly = z.string().regex(/^\d{4}-\d{2}$/, 'Expected YYYY-MM');
 
 export const idParams = z.object({ id: objectId });
 export const dateParams = z.object({ date: dateOnly });
@@ -11,6 +12,9 @@ export const listQuery = z.object({
   cursor: z.string().optional(),
   limit: limitParam,
 });
+
+export const streakQuery = z.object({ today: dateOnly.optional() });
+export const calendarQuery = z.object({ month: monthOnly });
 
 /** The editor document — a Tiptap/ProseMirror doc node. Shape kept loose. */
 const contentDoc = z

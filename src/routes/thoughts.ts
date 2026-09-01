@@ -1,9 +1,11 @@
 import { Router } from 'express';
 
 import { getAuth } from '../middleware/auth.ts';
+import * as conversations from '../services/conversation.service.ts';
 import * as thoughts from '../services/thought.service.ts';
 import entriesRouter from './entries.ts';
 import tagsRouter from './tags.ts';
+import { thoughtInvitesRouter, thoughtMembersRouter } from './thoughtShare.ts';
 import {
   createThoughtBody,
   idParams,
@@ -52,13 +54,21 @@ router.get('/trash', async (req, res) => {
 router.get('/:id', async (req, res) => {
   const { userId } = getAuth(req);
   const { id } = idParams.parse(req.params);
-  res.json(await thoughts.getThoughtOrThrow(id, userId));
+  res.json(await thoughts.getThoughtForReader(id, userId));
 });
 
 router.get('/:id/stats', async (req, res) => {
   const { userId } = getAuth(req);
   const { id } = idParams.parse(req.params);
   res.json(await thoughts.getThoughtStats(id, userId));
+});
+
+// The discussion thread shared by everyone on this thought.
+router.get('/:id/conversation', async (req, res) => {
+  const { userId } = getAuth(req);
+  const { id } = idParams.parse(req.params);
+  const conv = await conversations.getOrCreateThoughtConversation(id, userId);
+  res.json(conversations.toConversationView(conv, userId));
 });
 
 router.patch('/:id', async (req, res) => {
@@ -96,5 +106,7 @@ router.post('/:id/restore', async (req, res) => {
 // Sub-resources scoped to a thought.
 router.use('/:thoughtId/entries', entriesRouter);
 router.use('/:thoughtId/tags', tagsRouter);
+router.use('/:thoughtId/invites', thoughtInvitesRouter);
+router.use('/:thoughtId/members', thoughtMembersRouter);
 
 export default router;

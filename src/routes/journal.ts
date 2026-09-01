@@ -3,11 +3,13 @@ import { Router } from 'express';
 import { getAuth } from '../middleware/auth.ts';
 import * as journal from '../services/journal.service.ts';
 import {
+  calendarQuery,
   dateParams,
   idParams,
   journalPatchBody,
   journalUpsertBody,
   listQuery,
+  streakQuery,
 } from './journal.schema.ts';
 
 const router = Router();
@@ -17,6 +19,19 @@ router.get('/', async (req, res) => {
   const query = listQuery.parse(req.query);
   const page = await journal.listJournal(userId, query);
   res.json({ items: page.items, hasMore: page.hasMore, nextCursor: page.nextCursor });
+});
+
+// Both declared before `/:id`.
+router.get('/streak', async (req, res) => {
+  const { userId } = getAuth(req);
+  const { today } = streakQuery.parse(req.query);
+  res.json(await journal.getStreak(userId, today));
+});
+
+router.get('/calendar', async (req, res) => {
+  const { userId } = getAuth(req);
+  const { month } = calendarQuery.parse(req.query);
+  res.json({ month, dates: await journal.getMonthDates(userId, month) });
 });
 
 // `/by-date/...` before `/:id`.

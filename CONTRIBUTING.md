@@ -23,8 +23,9 @@ src/
   services/          business logic + every Mongoose query lives here
   routes/            thin HTTP handlers; <name>.schema.ts = its Zod schemas; <name>.test.ts alongside
   middleware/         error handler, multipart upload, requireAuth
+  realtime/          Socket.IO push layer — initRealtime(server), getIo() (server.ts only)
   storage/           StoragePort abstraction — S3Storage (prod) / MemoryStorage (dev + tests)
-  lib/               cursor (keyset pagination), mime (upload allow-list), jwt, password, day (YYYY-MM-DD math)
+  lib/               cursor (keyset pagination), mime (upload allow-list), jwt, password, day, publicUser
   schemas/common.ts  shared Zod pieces (objectId, dateString, paging)
 testing/             integration harness (in-memory DB + server), factories, api client
 dist/                compiled output from `npm run build` (git-ignored)
@@ -34,16 +35,70 @@ dist/                compiled output from `npm run build` (git-ignored)
 all DB access and business rules; `models` only define shape + indexes. A route
 never touches a Mongoose model directly; a service never reads `req`.
 
-**Auth & ownership:** `/api/auth/*` is public (`register`, `login`, `refresh`,
-`logout`, `me`); everything under `/api/thoughts`, `/api/activity`, `/api/tasks`,
-`/api/task-tags`, `/api/routine` and `/api/journal` sits behind
+**Auth & ownership:** `/api/auth/*` is public except `me` (`GET` / `PATCH`,
+behind `requireAuth`); the rest are `register`, `login`, `refresh`, `logout`.
+`register` requires a unique `username` (`a-z0-9_`, 3–30); `PATCH /api/auth/me`
+sets or renames it (accounts created before usernames existed carry `null` until
+the client walks them through picking one) and also carries `homeBanner` /
+`journalBanner` — opaque ids from the frontend's fixed hero-image list, `null` =
+default. Everything under `/api/thoughts`,
+`/api/activity`, `/api/tasks`, `/api/task-tags`, `/api/routine` and
+`/api/journal` sits behind
 `requireAuth`, which verifies the `Bearer` access JWT, rejects blacklisted `jti`s
 (`TokenDenylist`, a TTL collection), and sets `req.auth`. Handlers read the user
-with `getAuth(req)` and pass `userId` into every service call. Every thought /
-entry query is filtered by `ownerId`; a thought that exists but isn't yours
+with `getAuth(req)` and pass `userId` into every service call. Writes to a thought
+and its entries stay filtered by `ownerId`; a thought that exists but isn't yours
 returns **404**, never 403. Refresh tokens rotate — using an old one 401s. In
 tests, `useTestApp().registerAndClient()` returns an authed `api` client;
 `seedThought(ownerId, …)` / `seedEntry(thoughtId, ownerId, …)` need the owner.
+
+**Sharing a thought:** the owner invites emails via `POST
+/api/thoughts/:id/invites`; a `ThoughtInvite` row (`pending` → `accepted` /
+`declined` / `revoked`) is the record. An invite to an unknown email is stored
+and bound to the account when it registers (`bindPendingInvites`, called from
+`register`). **Participants = the owner + every user with an `accepted`
+invite.** `assertParticipant(thoughtId, userId)` in
+`src/services/thoughtShare.service.ts` is the read gate — it returns
+`{ thought, role: 'owner' | 'collaborator' }` or 404. Read paths
+(`GET /api/thoughts/:id`, `/stats`, `/entries*`) use it; **all write paths keep
+`getThoughtOrThrow` (owner-only)** — collaborators are view + discuss only.
+`GET /api/thoughts` and `GET /api/thoughts/:id` return `role` (and `sharedBy`
+for shared rows). Invitee side: `GET /api/invites`, `POST
+/api/invites/:id/accept | decline`.
+
+**Messaging:** a `Conversation` is either `kind: 'dm'` (keyed by `dmKey` = the
+two sorted user ids) or `kind: 'thought'` (keyed by `thoughtId`, its members
+kept in sync with the thought's participants). Both are created lazily —
+`POST /api/conversations/dm { username }` and `GET
+/api/thoughts/:id/conversation`. `Message` rows are keyset-paginated
+oldest-first exactly like the entry timeline (`src/lib/cursor.ts`), fetched
+`?before=<cursor>` for older history. Per-member `reads[]` on the conversation
+drives `unreadCount` in `GET /api/conversations`; `POST
+/api/conversations/:id/read` stamps it. A parallel per-member `backgrounds[]`
+holds each user's chat-wallpaper choice — `PUT /api/conversations/:id/background
+{ banner }` (`null` clears) — surfaced as `background` on every conversation the
+caller receives. `assertMember(conversationId, userId)` is the gate (404
+otherwise); an author can soft-delete their own message.
+
+**Realtime (`src/realtime/index.ts`):** `initRealtime(httpServer)` attaches a
+Socket.IO server (`src/server.ts` only — never in tests). REST is the source of
+truth for every write; the socket layer only **pushes** (`message:new`,
+`message:removed`, `conversation:bump`) and relays ephemeral `typing` /
+`presence`. Services emit through `getIo()?.…`, which is `null` under the test
+harness, so every REST path stays fully functional and testable without a
+socket. Handshake auth reuses `verifyAccess` + `isBlacklisted`; clients
+`conversation:join` a thread room after an `assertMember` check. Presence is an
+in-process map (single-process only — multi-process would need the socket.io
+Redis adapter). `src/realtime/realtime.test.ts` runs its own
+`http.createServer(app)` + `socket.io-client`.
+
+**Journal:** one entry per `date` (`YYYY-MM-DD`), soft-deleted, keyset-paged
+newest-first. `GET /api/journal/streak?today=` returns
+`{ current, longest, writtenToday }` — `current` counts back from `today` (or
+yesterday if today isn't written yet), so a streak isn't "lost" until a whole
+day is missed; pass the client-local `today` so time zones line up.
+`GET /api/journal/calendar?month=YYYY-MM` → `{ month, dates: [] }` of the days
+that have an entry, for the picker grid.
 
 **Task shapes & the day view:** a `Task` is either `kind: 'single'` (one
 `date`) or `kind: 'range'` (`startDate…endDate`). A range runs in one of two

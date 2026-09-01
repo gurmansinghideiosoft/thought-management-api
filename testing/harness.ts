@@ -21,6 +21,7 @@ export interface TestApp {
   registerAndClient(overrides?: {
     email?: string;
     password?: string;
+    username?: string;
   }): Promise<AuthedClient>;
 }
 
@@ -66,6 +67,8 @@ export const useTestApp = (): TestApp => {
       }>('/api/auth/register', {
         email: overrides?.email ?? `user-${randomUUID()}@test.dev`,
         password: overrides?.password ?? 'correct horse battery',
+        username:
+          overrides?.username ?? `u${randomUUID().replace(/-/g, '').slice(0, 12)}`,
       });
       if (res.status !== 201) {
         throw new Error(`registerAndClient failed: ${String(res.status)}`);

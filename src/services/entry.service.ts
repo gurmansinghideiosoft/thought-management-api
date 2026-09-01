@@ -11,6 +11,7 @@ import {
 } from '../models/entry.model.ts';
 import { Thought, type ThoughtDocument } from '../models/thought.model.ts';
 import { getThoughtOrThrow } from './thought.service.ts';
+import { assertParticipant } from './thoughtShare.service.ts';
 import { downloadUrlFor } from './upload.service.ts';
 
 // --- helpers ---------------------------------------------------------------
@@ -79,14 +80,15 @@ export interface TimelinePage {
 
 export const listTimeline = async (
   thoughtId: string,
-  ownerId: string,
+  userId: string,
   params: TimelineParams,
 ): Promise<TimelinePage> => {
-  await getThoughtOrThrow(thoughtId, ownerId);
+  // Owner or accepted collaborator — the entry rows themselves carry the
+  // thought owner's id, so scope by `thoughtId` only once past this gate.
+  await assertParticipant(thoughtId, userId);
 
   const base: Record<string, unknown> = {
     thoughtId: new Types.ObjectId(thoughtId),
-    ownerId: new Types.ObjectId(ownerId),
     deletedAt: null,
   };
   if (params.tagId) base.tagIds = new Types.ObjectId(params.tagId);
@@ -132,10 +134,12 @@ export const listTimeline = async (
 
 export const getEntryDetail = async (
   thoughtId: string,
-  ownerId: string,
+  userId: string,
   entryId: string,
 ): Promise<{ entry: EntryDocument; downloadUrl: string | null }> => {
-  const entry = await getEntryOrThrow(thoughtId, ownerId, entryId);
+  await assertParticipant(thoughtId, userId);
+  const entry = await Entry.findOne({ _id: entryId, thoughtId });
+  if (!entry) throw notFoundError('Entry not found');
   const downloadUrl =
     entry.kind === 'file' && entry.file ? await downloadUrlFor(entry.file) : null;
   return { entry, downloadUrl };

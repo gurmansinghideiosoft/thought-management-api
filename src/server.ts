@@ -3,6 +3,7 @@ import http from 'node:http';
 import app from './app.ts';
 import config from './config/index.ts';
 import { connectDb, disconnectDb } from './db/mongoose.ts';
+import { closeRealtime, initRealtime } from './realtime/index.ts';
 
 /**
  * Process entry point.
@@ -11,6 +12,7 @@ import { connectDb, disconnectDb } from './db/mongoose.ts';
  * down cleanly on SIGTERM/SIGINT or an unrecoverable error.
  */
 const server = http.createServer(app);
+initRealtime(server);
 
 let shuttingDown = false;
 
@@ -24,9 +26,10 @@ const shutdown = (signal: string): void => {
     void (async () => {
       if (err) console.error('Error while closing server:', err);
       try {
+        await closeRealtime();
         await disconnectDb();
       } catch (dbErr) {
-        console.error('Error while disconnecting from MongoDB:', dbErr);
+        console.error('Error while shutting down:', dbErr);
       }
       console.log('Shutdown complete. Bye.');
       process.exit(err ? 1 : 0);

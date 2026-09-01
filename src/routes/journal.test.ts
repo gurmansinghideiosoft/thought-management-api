@@ -123,3 +123,53 @@ test('journal entries are isolated per user', async () => {
     404,
   );
 });
+
+test('GET /api/journal/streak counts consecutive days', async () => {
+  const today = '2026-09-10';
+  for (const d of ['08', '09', '10']) {
+    await seedJournalEntry(auth.userId, { date: `2026-09-${d}` });
+  }
+  // a broken older run: 04, 05  (length 2)
+  for (const d of ['04', '05']) {
+    await seedJournalEntry(auth.userId, { date: `2026-09-${d}` });
+  }
+
+  const res = await api().get<{
+    current: number;
+    longest: number;
+    writtenToday: boolean;
+  }>(`/api/journal/streak?today=${today}`);
+  assert.equal(res.body.current, 3);
+  assert.equal(res.body.longest, 3);
+  assert.equal(res.body.writtenToday, true);
+});
+
+test('streak survives a day not yet written, breaks after a full gap', async () => {
+  // Wrote through yesterday but not today.
+  for (const d of ['07', '08', '09']) {
+    await seedJournalEntry(auth.userId, { date: `2026-09-${d}` });
+  }
+  const kept = await api().get<{ current: number; writtenToday: boolean }>(
+    '/api/journal/streak?today=2026-09-10',
+  );
+  assert.equal(kept.body.current, 3);
+  assert.equal(kept.body.writtenToday, false);
+
+  // A whole day missed (nothing on the 10th) -> from the 11th the streak is gone.
+  const broken = await api().get<{ current: number }>(
+    '/api/journal/streak?today=2026-09-11',
+  );
+  assert.equal(broken.body.current, 0);
+});
+
+test('GET /api/journal/calendar lists the month’s written days', async () => {
+  for (const d of ['02', '15', '28']) {
+    await seedJournalEntry(auth.userId, { date: `2026-09-${d}` });
+  }
+  await seedJournalEntry(auth.userId, { date: '2026-10-01' }); // different month
+
+  const res = await api().get<{ month: string; dates: string[] }>(
+    '/api/journal/calendar?month=2026-09',
+  );
+  assert.deepEqual(res.body.dates, ['2026-09-02', '2026-09-15', '2026-09-28']);
+});

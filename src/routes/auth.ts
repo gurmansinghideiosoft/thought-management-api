@@ -2,7 +2,13 @@ import { Router } from 'express';
 
 import { getAuth, requireAuth } from '../middleware/auth.ts';
 import * as auth from '../services/auth.service.ts';
-import { loginBody, logoutBody, refreshBody, registerBody } from './auth.schema.ts';
+import {
+  loginBody,
+  logoutBody,
+  refreshBody,
+  registerBody,
+  updateMeBody,
+} from './auth.schema.ts';
 
 const router = Router();
 
@@ -32,6 +38,12 @@ router.post('/logout', requireAuth, async (req, res) => {
 
 router.get('/me', requireAuth, async (req, res) => {
   const user = await auth.getMe(getAuth(req).userId);
+  res.json({ user });
+});
+
+router.patch('/me', requireAuth, async (req, res) => {
+  const patch = updateMeBody.parse(req.body);
+  const user = await auth.updateProfile(getAuth(req).userId, patch);
   res.json({ user });
 });
 

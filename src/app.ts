@@ -9,7 +9,9 @@ import { requireAuth } from './middleware/auth.ts';
 import { errorHandler, notFound } from './middleware/errorHandler.ts';
 import activityRouter from './routes/activity.ts';
 import authRouter from './routes/auth.ts';
+import conversationsRouter from './routes/conversations.ts';
 import healthRouter from './routes/health.ts';
+import invitesRouter from './routes/invites.ts';
 import journalRouter from './routes/journal.ts';
 import routineRouter from './routes/routine.ts';
 import taskTagsRouter from './routes/taskTags.ts';
@@ -95,6 +97,8 @@ app.use('/api/auth', authRouter);
 
 // Everything below requires a valid access token.
 app.use('/api/thoughts', requireAuth, thoughtsRouter);
+app.use('/api/invites', requireAuth, invitesRouter);
+app.use('/api/conversations', requireAuth, conversationsRouter);
 app.use('/api/activity', requireAuth, activityRouter);
 app.use('/api/tasks', requireAuth, tasksRouter);
 app.use('/api/task-tags', requireAuth, taskTagsRouter);

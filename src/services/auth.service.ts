@@ -3,6 +3,7 @@ import { signAccess, signRefresh, verifyRefresh } from '../lib/jwt.ts';
 import { hashPassword, verifyPassword } from '../lib/password.ts';
 import { TokenDenylist } from '../models/tokenDenylist.model.ts';
 import { User, type UserDocument } from '../models/user.model.ts';
+import { bindPendingInvites } from './thoughtShare.service.ts';
 
 export interface AuthTokens {
   accessToken: string;
@@ -44,18 +45,56 @@ export const isBlacklisted = async (jti: string): Promise<boolean> =>
 export const register = async (input: {
   email: string;
   password: string;
+  username: string;
   name?: string;
 }): Promise<AuthResult> => {
   const email = input.email.toLowerCase();
+  const username = input.username.toLowerCase();
   if (await User.exists({ email })) {
     throw conflict('An account with that email already exists');
   }
+  if (await User.exists({ username })) {
+    throw conflict('That username is taken');
+  }
+
+  // A lost race on either unique index surfaces as a 409 via the error handler.
   const user = await User.create({
     email,
+    username,
     passwordHash: await hashPassword(input.password),
     name: input.name ?? '',
   });
+  // Attach any thought invites that were sent to this email before signup.
+  await bindPendingInvites(user);
   return { user, ...issueTokens(String(user._id)) };
+};
+
+/** Set or change the caller's profile fields (username, name, banner choices). */
+export const updateProfile = async (
+  userId: string,
+  patch: {
+    username?: string;
+    name?: string;
+    homeBanner?: string | null;
+    journalBanner?: string | null;
+  },
+): Promise<UserDocument> => {
+  const user = await User.findById(userId);
+  if (!user) throw notFoundError('User not found');
+
+  if (patch.username !== undefined) {
+    const username = patch.username.toLowerCase();
+    if (username !== user.username) {
+      if (await User.exists({ username })) throw conflict('That username is taken');
+      user.username = username;
+    }
+  }
+  if (patch.name !== undefined) user.name = patch.name;
+  if (patch.homeBanner !== undefined) user.homeBanner = patch.homeBanner;
+  if (patch.journalBanner !== undefined) user.journalBanner = patch.journalBanner;
+
+  await user.save();
+  return user;
 };
 
 export const login = async (input: {
