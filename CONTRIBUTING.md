@@ -36,8 +36,10 @@ all DB access and business rules; `models` only define shape + indexes. A route
 never touches a Mongoose model directly; a service never reads `req`.
 
 **Auth & ownership:** `/api/auth/*` is public except `me` (`GET` / `PATCH`,
-behind `requireAuth`); the rest are `register`, `login`, `refresh`, `logout`.
-`register` requires a unique `username` (`a-z0-9_`, 3–30); `PATCH /api/auth/me`
+behind `requireAuth`); the rest are `register`, `login`, `refresh`, `logout`,
+`username-available` (a `GET` for the sign-up form's live check — usernames are
+public here, so nothing leaks). `register` requires a unique `username`
+(`a-z0-9_`, 3–30); `PATCH /api/auth/me`
 sets or renames it (accounts created before usernames existed carry `null` until
 the client walks them through picking one) and also carries `homeBanner` /
 `journalBanner` — opaque ids from the frontend's fixed hero-image list, `null` =

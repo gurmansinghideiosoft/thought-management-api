@@ -8,6 +8,7 @@ import {
   refreshBody,
   registerBody,
   updateMeBody,
+  usernameQuery,
 } from './auth.schema.ts';
 
 const router = Router();
@@ -16,6 +17,13 @@ router.post('/register', async (req, res) => {
   const body = registerBody.parse(req.body);
   const { user, accessToken, refreshToken } = await auth.register(body);
   res.status(201).json({ user, accessToken, refreshToken });
+});
+
+// Live check for the sign-up form. Usernames are public in this app (people
+// DM / invite by handle), so there's nothing to leak.
+router.get('/username-available', async (req, res) => {
+  const { username } = usernameQuery.parse(req.query);
+  res.json({ username, available: await auth.isUsernameAvailable(username) });
 });
 
 router.post('/login', async (req, res) => {

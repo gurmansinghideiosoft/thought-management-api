@@ -14,6 +14,8 @@ export const registerBody = z.object({
   name: z.string().trim().max(100).optional(),
 });
 
+export const usernameQuery = z.object({ username });
+
 /** A banner id from the frontend's fixed list, or `null` to reset to default. */
 const bannerId = z.string().trim().max(64).nullable();
 

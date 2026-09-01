@@ -82,6 +82,26 @@ test('POST /register requires a valid username', async () => {
   );
 });
 
+test('GET /username-available reflects whether a handle is taken', async () => {
+  const free = await anon().get<{ username: string; available: boolean }>(
+    '/api/auth/username-available?username=freehandle',
+  );
+  assert.equal(free.status, 200);
+  assert.equal(free.body.available, true);
+
+  await register('taker@user.com', 'password123', 'freehandle');
+
+  const taken = await anon().get<{ available: boolean }>(
+    '/api/auth/username-available?username=FreeHandle',
+  );
+  assert.equal(taken.body.available, false); // case-insensitive
+
+  assert.equal(
+    (await anon().get('/api/auth/username-available?username=no')).status,
+    400, // too short for the username rule
+  );
+});
+
 test('PATCH /me sets and renames the username', async () => {
   const { body } = await register('profile@user.com', 'password123', 'profile_one');
   const authed = makeClient(app.url, body.accessToken);

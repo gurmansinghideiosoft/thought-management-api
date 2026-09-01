@@ -69,6 +69,10 @@ export const register = async (input: {
   return { user, ...issueTokens(String(user._id)) };
 };
 
+/** Is this handle free? (Used by the sign-up form's live check.) */
+export const isUsernameAvailable = async (username: string): Promise<boolean> =>
+  (await User.exists({ username: username.toLowerCase() })) === null;
+
 /** Set or change the caller's profile fields (username, name, banner choices). */
 export const updateProfile = async (
   userId: string,
