@@ -17,6 +17,7 @@ import routineRouter from './routes/routine.ts';
 import taskTagsRouter from './routes/taskTags.ts';
 import tasksRouter from './routes/tasks.ts';
 import thoughtsRouter from './routes/thoughts.ts';
+import vaultRouter from './routes/vault.ts';
 
 /**
  * `helmet@8` ships no ESM type declaration and its `package.json` `exports`
@@ -115,6 +116,7 @@ app.use('/api/tasks', requireAuth, tasksRouter);
 app.use('/api/task-tags', requireAuth, taskTagsRouter);
 app.use('/api/routine', requireAuth, routineRouter);
 app.use('/api/journal', requireAuth, journalRouter);
+app.use('/api/vault', requireAuth, vaultRouter);
 
 // --- Fallbacks ---------------------------------------------------
 

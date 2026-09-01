@@ -44,8 +44,8 @@ sets or renames it (accounts created before usernames existed carry `null` until
 the client walks them through picking one) and also carries `homeBanner` /
 `journalBanner` — opaque ids from the frontend's fixed hero-image list, `null` =
 default. Everything under `/api/thoughts`,
-`/api/activity`, `/api/tasks`, `/api/task-tags`, `/api/routine` and
-`/api/journal` sits behind
+`/api/activity`, `/api/tasks`, `/api/task-tags`, `/api/routine`,
+`/api/journal` and `/api/vault` sits behind
 `requireAuth`, which verifies the `Bearer` access JWT, rejects blacklisted `jti`s
 (`TokenDenylist`, a TTL collection), and sets `req.auth`. Handlers read the user
 with `getAuth(req)` and pass `userId` into every service call. Writes to a thought
@@ -101,6 +101,17 @@ yesterday if today isn't written yet), so a streak isn't "lost" until a whole
 day is missed; pass the client-local `today` so time zones line up.
 `GET /api/journal/calendar?month=YYYY-MM` → `{ month, dates: [] }` of the days
 that have an entry, for the picker grid.
+
+**Vault (`/api/vault`):** a **zero-knowledge** credential store. The client
+derives a key from a master password (Argon2id) and encrypts everything in the
+browser; the server holds only opaque base64 — never a key, never plaintext, no
+new server secret. A per-user `VaultKeystore` (`kdfSalt`, `kdfParams`,
+`protectedKey`, `verifier`) is created once via `POST /setup`, replaced by
+`PUT /rekey` on a master-password change, and blown away by `DELETE /api/vault`
+(the forgot-password escape hatch — wipes every `Credential` too). A
+`Credential` keeps `name` / `category` / `tags` in plaintext (list + filter
+without unlocking) and the rest inside `cipher`. Routes validate `cipher` is
+base64 within a size cap and otherwise treat every blob as opaque.
 
 **Task shapes & the day view:** a `Task` is either `kind: 'single'` (one
 `date`) or `kind: 'range'` (`startDate…endDate`). A range runs in one of two

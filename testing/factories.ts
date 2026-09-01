@@ -7,6 +7,11 @@ import {
   type ConversationDocument,
   type ConversationKind,
 } from '../src/models/conversation.model.ts';
+import {
+  Credential,
+  type CredentialCategory,
+  type CredentialDocument,
+} from '../src/models/credential.model.ts';
 import { Entry, type EntryDocument, type EntryKind } from '../src/models/entry.model.ts';
 import { JournalEntry } from '../src/models/journal.model.ts';
 import { Message, type MessageDocument } from '../src/models/message.model.ts';
@@ -212,3 +217,23 @@ export const seedMessage = (
   authorId: Types.ObjectId | string,
   body = 'seeded message',
 ): Promise<MessageDocument> => Message.create({ conversationId, authorId, body });
+
+interface CredentialOverrides {
+  name?: string;
+  category?: CredentialCategory;
+  tags?: string[];
+  cipher?: string;
+}
+
+export const seedCredential = (
+  ownerId: Types.ObjectId | string,
+  overrides: CredentialOverrides = {},
+): Promise<CredentialDocument> =>
+  Credential.create({
+    ownerId,
+    name: overrides.name ?? 'Seed service',
+    category: overrides.category ?? 'login',
+    tags: overrides.tags ?? [],
+    // any non-empty base64 — the server treats it as opaque
+    cipher: overrides.cipher ?? Buffer.from('seeded-cipher').toString('base64'),
+  });
