@@ -103,6 +103,15 @@ day is missed; pass the client-local `today` so time zones line up.
 `GET /api/journal/calendar?month=YYYY-MM` → `{ month, dates: [] }` of the days
 that have an entry, for the picker grid.
 
+**Search (`/api/search?q=&limit=`):** one call fans out case-insensitive
+`$regex` queries (`escapeRegExp`) across thoughts (title/description), entries
+(body), journal (title/excerpt), tasks (content), transactions (title) and
+captures (text), owner-scoped, `limit` (default 6) per group. Returns
+`{ query, groups: { thoughts, entries, journal, tasks, transactions, captures } }`
+where each hit carries a `snippet` (window around the match) and what the
+client needs to link to it. `q` must be ≥ 2 chars. No index changes — fine at
+personal scale; swap to `$text` if it ever isn't.
+
 **Habits (`/api/habits`):** daily `binary` (yes/no) or `count` (toward a
 `target`) habits. A `HabitEntry` is `{ habitId, date (YYYY-MM-DD), value }` and
 only exists when `value >= 1` — `PUT /:id/entries/:date { value }` upserts, or
