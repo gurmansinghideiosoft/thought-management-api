@@ -9,6 +9,7 @@ import { requireAuth } from './middleware/auth.ts';
 import { errorHandler, notFound } from './middleware/errorHandler.ts';
 import activityRouter from './routes/activity.ts';
 import authRouter from './routes/auth.ts';
+import captureRouter from './routes/capture.ts';
 import conversationsRouter from './routes/conversations.ts';
 import financeRouter from './routes/finance.ts';
 import healthRouter from './routes/health.ts';
@@ -117,6 +118,7 @@ app.use('/api/tasks', requireAuth, tasksRouter);
 app.use('/api/task-tags', requireAuth, taskTagsRouter);
 app.use('/api/routine', requireAuth, routineRouter);
 app.use('/api/journal', requireAuth, journalRouter);
+app.use('/api/captures', requireAuth, captureRouter);
 app.use('/api/finance', requireAuth, financeRouter);
 app.use('/api/vault', requireAuth, vaultRouter);
 

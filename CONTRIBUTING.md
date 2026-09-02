@@ -45,7 +45,7 @@ the client walks them through picking one) and also carries `homeBanner` /
 `journalBanner` — opaque ids from the frontend's fixed hero-image list, `null` =
 default. Everything under `/api/thoughts`,
 `/api/activity`, `/api/tasks`, `/api/task-tags`, `/api/routine`,
-`/api/journal`, `/api/finance` and `/api/vault` sits behind
+`/api/journal`, `/api/captures`, `/api/finance` and `/api/vault` sits behind
 `requireAuth`, which verifies the `Bearer` access JWT, rejects blacklisted `jti`s
 (`TokenDenylist`, a TTL collection), and sets `req.auth`. Handlers read the user
 with `getAuth(req)` and pass `userId` into every service call. Writes to a thought
@@ -101,6 +101,13 @@ yesterday if today isn't written yet), so a streak isn't "lost" until a whole
 day is missed; pass the client-local `today` so time zones line up.
 `GET /api/journal/calendar?month=YYYY-MM` → `{ month, dates: [] }` of the days
 that have an entry, for the picker grid.
+
+**Inbox (`/api/captures`):** friction-free quick capture. A `Capture` is just
+`{ text (1–5000), status: open|archived }` — no title, tag, or date. `GET
+/?status=` (default `open`, newest first), `POST /` (text only), `PATCH /:id`
+(edit text or flip status), `DELETE /:id`. "Convert to task / thought" is done
+client-side (create the task/thought, then archive the capture) — the server
+keeps no cross-links.
 
 **Finance (`/api/finance`):** day-scoped money tracking. A `Transaction` is
 `{ title, amount (>0, 2dp), kind: spending|earning, date (YYYY-MM-DD),

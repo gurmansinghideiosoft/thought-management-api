@@ -8,6 +8,11 @@ import {
   type ConversationKind,
 } from '../src/models/conversation.model.ts';
 import {
+  Capture,
+  type CaptureDocument,
+  type CaptureStatus,
+} from '../src/models/capture.model.ts';
+import {
   Credential,
   type CredentialCategory,
   type CredentialDocument,
@@ -266,6 +271,21 @@ interface TransactionOverrides {
   date?: string;
   tagId?: Types.ObjectId | null;
 }
+
+interface CaptureOverrides {
+  text?: string;
+  status?: CaptureStatus;
+}
+
+export const seedCapture = (
+  ownerId: Types.ObjectId | string,
+  overrides: CaptureOverrides = {},
+): Promise<CaptureDocument> =>
+  Capture.create({
+    ownerId,
+    text: overrides.text ?? 'a stray thought',
+    status: overrides.status ?? 'open',
+  });
 
 export const seedTransaction = (
   ownerId: Types.ObjectId | string,
