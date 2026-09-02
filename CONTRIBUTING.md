@@ -45,7 +45,8 @@ the client walks them through picking one) and also carries `homeBanner` /
 `journalBanner` — opaque ids from the frontend's fixed hero-image list, `null` =
 default. Everything under `/api/thoughts`,
 `/api/activity`, `/api/tasks`, `/api/task-tags`, `/api/routine`,
-`/api/journal`, `/api/captures`, `/api/finance` and `/api/vault` sits behind
+`/api/journal`, `/api/habits`, `/api/captures`, `/api/finance` and `/api/vault`
+sits behind
 `requireAuth`, which verifies the `Bearer` access JWT, rejects blacklisted `jti`s
 (`TokenDenylist`, a TTL collection), and sets `req.auth`. Handlers read the user
 with `getAuth(req)` and pass `userId` into every service call. Writes to a thought
@@ -101,6 +102,16 @@ yesterday if today isn't written yet), so a streak isn't "lost" until a whole
 day is missed; pass the client-local `today` so time zones line up.
 `GET /api/journal/calendar?month=YYYY-MM` → `{ month, dates: [] }` of the days
 that have an entry, for the picker grid.
+
+**Habits (`/api/habits`):** daily `binary` (yes/no) or `count` (toward a
+`target`) habits. A `HabitEntry` is `{ habitId, date (YYYY-MM-DD), value }` and
+only exists when `value >= 1` — `PUT /:id/entries/:date { value }` upserts, or
+deletes the row when `value <= 0`. `GET /api/habits?date=&includeArchived=`
+returns each habit enriched with `todayValue`, `doneToday`, `currentStreak`,
+`longestStreak` (streak logic mirrors the Journal — today or grace-yesterday
+anchors `current`; a `count` day counts once `value >= target`).
+`GET /:id/month?month=YYYY-MM` feeds the heatmap. `PUT /reorder { ids }` sets
+`position`. Deleting a habit drops its entries.
 
 **Inbox (`/api/captures`):** friction-free quick capture. A `Capture` is just
 `{ text (1–5000), status: open|archived }` — no title, tag, or date. `GET

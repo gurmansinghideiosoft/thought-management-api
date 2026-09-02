@@ -18,6 +18,8 @@ import {
   type CredentialDocument,
 } from '../src/models/credential.model.ts';
 import { Entry, type EntryDocument, type EntryKind } from '../src/models/entry.model.ts';
+import { Habit, type HabitDocument, type HabitType } from '../src/models/habit.model.ts';
+import { HabitEntry, type HabitEntryDocument } from '../src/models/habitEntry.model.ts';
 import { FinanceTag, type FinanceTagDocument } from '../src/models/financeTag.model.ts';
 import { JournalEntry } from '../src/models/journal.model.ts';
 import { Message, type MessageDocument } from '../src/models/message.model.ts';
@@ -300,6 +302,38 @@ interface TransactionOverrides {
   date?: string;
   tagId?: Types.ObjectId | null;
 }
+
+interface HabitOverrides {
+  name?: string;
+  type?: HabitType;
+  target?: number;
+  unit?: string;
+  color?: string;
+  archived?: boolean;
+  position?: number;
+}
+
+export const seedHabit = (
+  ownerId: Types.ObjectId | string,
+  overrides: HabitOverrides = {},
+): Promise<HabitDocument> =>
+  Habit.create({
+    ownerId,
+    name: overrides.name ?? `habit-${randomUUID().slice(0, 8)}`,
+    type: overrides.type ?? 'binary',
+    target: overrides.target ?? 1,
+    unit: overrides.unit ?? '',
+    archived: overrides.archived ?? false,
+    position: overrides.position ?? 0,
+    ...(overrides.color ? { color: overrides.color } : {}),
+  });
+
+export const seedHabitEntry = (
+  ownerId: Types.ObjectId | string,
+  habitId: Types.ObjectId | string,
+  date: string,
+  value = 1,
+): Promise<HabitEntryDocument> => HabitEntry.create({ ownerId, habitId, date, value });
 
 interface CaptureOverrides {
   text?: string;
