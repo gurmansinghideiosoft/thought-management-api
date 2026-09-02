@@ -45,8 +45,8 @@ the client walks them through picking one) and also carries `homeBanner` /
 `journalBanner` — opaque ids from the frontend's fixed hero-image list, `null` =
 default. Everything under `/api/thoughts`,
 `/api/activity`, `/api/tasks`, `/api/task-tags`, `/api/routine`,
-`/api/journal`, `/api/reviews`, `/api/habits`, `/api/captures`, `/api/finance`,
-`/api/export` and `/api/vault` sits behind
+`/api/journal`, `/api/reviews`, `/api/habits`, `/api/captures`, `/api/log`,
+`/api/finance`, `/api/export` and `/api/vault` sits behind
 `requireAuth`, which verifies the `Bearer` access JWT, rejects blacklisted `jti`s
 (`TokenDenylist`, a TTL collection), rejects any token whose `iat` predates the
 user's `passwordChangedAt`, and sets `req.auth`. Handlers read the user
@@ -162,6 +162,14 @@ anchors `current`; a `count` day counts once `value >= target`).
 (edit text or flip status), `DELETE /:id`. "Convert to task / thought" is done
 client-side (create the task/thought, then archive the capture) — the server
 keeps no cross-links.
+
+**Work log (`/api/log`):** a day-scoped running log — quick notes jotted while
+working, copy-pasted into an end-of-day report. Deliberately its own thing, not
+captures / tasks / journal. A `LogEntry` is `{ text (1–2000), date (YYYY-MM-DD,
+client-local) }`. `GET /?date=` (defaults to the server's today) returns
+`{ date, items }` oldest-first; `POST /` (`{ text, date? }`), `PATCH /:id`
+(`{ text?, date? }` — the `date` move re-buckets an entry), `DELETE /:id`. Hard
+delete, no soft-delete.
 
 **Finance (`/api/finance`):** day-scoped money tracking. A `Transaction` is
 `{ title, amount (>0, 2dp), kind: spending|earning, date (YYYY-MM-DD),

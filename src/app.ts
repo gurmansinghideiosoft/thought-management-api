@@ -17,6 +17,7 @@ import habitRouter from './routes/habit.ts';
 import healthRouter from './routes/health.ts';
 import invitesRouter from './routes/invites.ts';
 import journalRouter from './routes/journal.ts';
+import logRouter from './routes/log.ts';
 import reviewsRouter from './routes/reviews.ts';
 import routineRouter from './routes/routine.ts';
 import searchRouter from './routes/search.ts';
@@ -128,6 +129,7 @@ app.use('/api/reviews', requireAuth, reviewsRouter);
 app.use('/api/export', requireAuth, exportRouter);
 app.use('/api/habits', requireAuth, habitRouter);
 app.use('/api/captures', requireAuth, captureRouter);
+app.use('/api/log', requireAuth, logRouter);
 app.use('/api/finance', requireAuth, financeRouter);
 app.use('/api/vault', requireAuth, vaultRouter);
 

@@ -22,6 +22,7 @@ import { Habit, type HabitDocument, type HabitType } from '../src/models/habit.m
 import { HabitEntry, type HabitEntryDocument } from '../src/models/habitEntry.model.ts';
 import { FinanceTag, type FinanceTagDocument } from '../src/models/financeTag.model.ts';
 import { JournalEntry } from '../src/models/journal.model.ts';
+import { LogEntry, type LogEntryDocument } from '../src/models/logEntry.model.ts';
 import { Message, type MessageDocument } from '../src/models/message.model.ts';
 import {
   Review,
@@ -366,6 +367,16 @@ export const seedTransaction = (
     kind: overrides.kind ?? 'spending',
     date: overrides.date ?? '2026-09-15',
     tagId: overrides.tagId ?? null,
+  });
+
+export const seedLogEntry = (
+  ownerId: Types.ObjectId | string,
+  overrides: { text?: string; date?: string } = {},
+): Promise<LogEntryDocument> =>
+  LogEntry.create({
+    ownerId,
+    text: overrides.text ?? 'did a thing',
+    date: overrides.date ?? '2026-09-15',
   });
 
 interface ReviewOverrides {
