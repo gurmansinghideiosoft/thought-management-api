@@ -10,6 +10,7 @@ import {
   type EntryLink,
 } from '../models/entry.model.ts';
 import { Thought, type ThoughtDocument } from '../models/thought.model.ts';
+import { escapeRegExp } from '../schemas/common.ts';
 import { getThoughtOrThrow } from './thought.service.ts';
 import { assertParticipant } from './thoughtShare.service.ts';
 import { downloadUrlFor } from './upload.service.ts';
@@ -95,7 +96,10 @@ export const listTimeline = async (
   if (params.starred !== undefined) base.starred = params.starred;
   if (params.kind) base.kind = params.kind;
   if (params.q && params.q.trim() !== '') {
-    base.$text = { $search: params.q.trim() };
+    // Case-insensitive substring — matches partial words and lets the client
+    // highlight the exact term it searched for.
+    const rx = { $regex: escapeRegExp(params.q.trim()), $options: 'i' };
+    base.$or = [{ body: rx }, { 'link.title': rx }];
   }
 
   const direction = params.after ? 'after' : 'before';

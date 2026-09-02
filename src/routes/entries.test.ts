@@ -235,6 +235,22 @@ test('timeline filters by tag, starred, and kind', async () => {
   );
 });
 
+test('timeline ?q= is a case-insensitive substring search over entry bodies', async () => {
+  const tid = await newThought();
+  const a = await addNote(tid, 'Bought groceries and milk');
+  await addNote(tid, 'Filed the taxes');
+  const c = await addNote(tid, 'GROCERY list for the weekend');
+
+  const hits = await api().get<Timeline>(`/api/thoughts/${tid}/entries?q=groc`);
+  assert.deepEqual(
+    hits.body.items.map((e) => e.id).sort(),
+    [a.body.id, c.body.id].sort(),
+  );
+
+  const none = await api().get<Timeline>(`/api/thoughts/${tid}/entries?q=zzz`);
+  assert.deepEqual(none.body.items, []);
+});
+
 test('PATCH entry edits body and tags; attach/detach tag endpoints', async () => {
   const created = await api().post<{ id: string; tags: { id: string }[] }>(
     '/api/thoughts',

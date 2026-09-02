@@ -91,7 +91,5 @@ entrySchema.index({ thoughtId: 1, starred: 1, createdAt: -1 });
 entrySchema.index({ thoughtId: 1, kind: 1, createdAt: -1 });
 // Per-owner cross-thought activity feed by date.
 entrySchema.index({ ownerId: 1, createdAt: -1, _id: -1 });
-// Full-text search within a thought's entries.
-entrySchema.index({ body: 'text', 'link.title': 'text' });
 
 export const Entry = model<EntryAttrs>('Entry', entrySchema);
