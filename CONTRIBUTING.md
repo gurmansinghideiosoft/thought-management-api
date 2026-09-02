@@ -45,8 +45,8 @@ the client walks them through picking one) and also carries `homeBanner` /
 `journalBanner` — opaque ids from the frontend's fixed hero-image list, `null` =
 default. Everything under `/api/thoughts`,
 `/api/activity`, `/api/tasks`, `/api/task-tags`, `/api/routine`,
-`/api/journal`, `/api/reviews`, `/api/habits`, `/api/captures`, `/api/finance`
-and `/api/vault` sits behind
+`/api/journal`, `/api/reviews`, `/api/habits`, `/api/captures`, `/api/finance`,
+`/api/export` and `/api/vault` sits behind
 `requireAuth`, which verifies the `Bearer` access JWT, rejects blacklisted `jti`s
 (`TokenDenylist`, a TTL collection), and sets `req.auth`. Handlers read the user
 with `getAuth(req)` and pass `userId` into every service call. Writes to a thought
@@ -127,6 +127,19 @@ by thought, habit done/possible rates, capture counts — plus this period's own
 `completedAt` once; `false` clears it). `GET /?period=&limit=` lists completed
 reviews, newest first. `anchor` / `today` are `YYYY-MM-DD` test hooks like
 `/journal/streak`.
+
+**Export (`/api/export`):** a full backup of the caller's **solo** data — no
+messages (collaborative), no vault (its own client-side plaintext export is a
+separate concern). `src/services/export.service.ts` `buildExport(ownerId)` reads
+every owner-scoped collection and returns `{ data, files }`: `data` is one JSON
+object (the canonical dump a future import restores from), `files` is a list of
+`{ path, content }` — `data.json`, `README.md`, `journal/<day>.md` (ProseMirror →
+Markdown via `src/lib/markdown.ts`), `thoughts/<n>-<slug>.md`, and CSVs for
+tasks / finance / habits / captures (`src/lib/csv.ts`). `GET /archive` zips the
+files with `archiver` (v8, ESM — `new ZipArchive(...)`, not the old default
+call) and streams them as `margin-backup-<date>.zip`; `GET /data.json`,
+`/journal.md`, `/transactions.csv` are single-file conveniences. All GET, no
+inputs, no schema file.
 
 **Habits (`/api/habits`):** daily `binary` (yes/no) or `count` (toward a
 `target`) habits. A `HabitEntry` is `{ habitId, date (YYYY-MM-DD), value }` and
