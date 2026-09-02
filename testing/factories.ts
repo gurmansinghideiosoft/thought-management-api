@@ -13,11 +13,17 @@ import {
   type CredentialDocument,
 } from '../src/models/credential.model.ts';
 import { Entry, type EntryDocument, type EntryKind } from '../src/models/entry.model.ts';
+import { FinanceTag, type FinanceTagDocument } from '../src/models/financeTag.model.ts';
 import { JournalEntry } from '../src/models/journal.model.ts';
 import { Message, type MessageDocument } from '../src/models/message.model.ts';
 import { Routine } from '../src/models/routine.model.ts';
 import { Task, type TaskDocument, type TaskStatus } from '../src/models/task.model.ts';
 import { TaskTag, type TaskTagDocument } from '../src/models/taskTag.model.ts';
+import {
+  Transaction,
+  type TransactionDocument,
+  type TransactionKind,
+} from '../src/models/transaction.model.ts';
 import {
   Thought,
   type ThoughtDocument,
@@ -236,4 +242,40 @@ export const seedCredential = (
     tags: overrides.tags ?? [],
     // any non-empty base64 — the server treats it as opaque
     cipher: overrides.cipher ?? Buffer.from('seeded-cipher').toString('base64'),
+  });
+
+interface FinanceTagOverrides {
+  name?: string;
+  color?: string;
+}
+
+export const seedFinanceTag = (
+  ownerId: Types.ObjectId | string,
+  overrides: FinanceTagOverrides = {},
+): Promise<FinanceTagDocument> =>
+  FinanceTag.create({
+    ownerId,
+    name: overrides.name ?? `fintag-${randomUUID().slice(0, 8)}`,
+    ...(overrides.color ? { color: overrides.color } : {}),
+  });
+
+interface TransactionOverrides {
+  title?: string;
+  amount?: number;
+  kind?: TransactionKind;
+  date?: string;
+  tagId?: Types.ObjectId | null;
+}
+
+export const seedTransaction = (
+  ownerId: Types.ObjectId | string,
+  overrides: TransactionOverrides = {},
+): Promise<TransactionDocument> =>
+  Transaction.create({
+    ownerId,
+    title: overrides.title ?? 'seeded transaction',
+    amount: overrides.amount ?? 10,
+    kind: overrides.kind ?? 'spending',
+    date: overrides.date ?? '2026-09-15',
+    tagId: overrides.tagId ?? null,
   });

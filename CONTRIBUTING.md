@@ -45,7 +45,7 @@ the client walks them through picking one) and also carries `homeBanner` /
 `journalBanner` — opaque ids from the frontend's fixed hero-image list, `null` =
 default. Everything under `/api/thoughts`,
 `/api/activity`, `/api/tasks`, `/api/task-tags`, `/api/routine`,
-`/api/journal` and `/api/vault` sits behind
+`/api/journal`, `/api/finance` and `/api/vault` sits behind
 `requireAuth`, which verifies the `Bearer` access JWT, rejects blacklisted `jti`s
 (`TokenDenylist`, a TTL collection), and sets `req.auth`. Handlers read the user
 with `getAuth(req)` and pass `userId` into every service call. Writes to a thought
@@ -101,6 +101,17 @@ yesterday if today isn't written yet), so a streak isn't "lost" until a whole
 day is missed; pass the client-local `today` so time zones line up.
 `GET /api/journal/calendar?month=YYYY-MM` → `{ month, dates: [] }` of the days
 that have an entry, for the picker grid.
+
+**Finance (`/api/finance`):** day-scoped money tracking. A `Transaction` is
+`{ title, amount (>0, 2dp), kind: spending|earning, date (YYYY-MM-DD),
+tagId|null }`; `FinanceTag` mirrors `TaskTag` (owner-scoped, unique
+case-insensitive name, `#rrggbb` colour). `POST /transactions` takes a batch
+(`{ transactions: [...] }`, ≤100) so a day's entries save in one call.
+`GET /transactions?from=&to=` and `GET /summary?from=&to=` are range-scoped
+(`from ≤ to`); the summary aggregates `{ totalSpending, totalEarning, net,
+count, byTag }` where `byTag` is spending-only, sorted desc, with an `Untagged`
+bucket. Deleting a tag nulls `tagId` on its transactions. `User.currency`
+(ISO 4217, default `USD`, set via `PATCH /api/auth/me`) is display-only.
 
 **Vault (`/api/vault`):** a **zero-knowledge** credential store. The client
 derives a key from a master password (Argon2id) and encrypts everything in the

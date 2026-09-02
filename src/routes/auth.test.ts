@@ -145,6 +145,22 @@ test('PATCH /me stores the banner choices, null resets them', async () => {
   assert.equal(cleared.body.user.homeBanner, null);
 });
 
+test('PATCH /me stores a currency code; a bad code is 400', async () => {
+  const { body } = await register('money@user.com', 'password123', 'money_user');
+  const authed = makeClient(app.url, body.accessToken);
+
+  const set = await authed.patch<{ user: { currency: string } }>('/api/auth/me', {
+    currency: 'EUR',
+  });
+  assert.equal(set.body.user.currency, 'EUR');
+
+  const me = await authed.get<{ user: { currency: string } }>('/api/auth/me');
+  assert.equal(me.body.user.currency, 'EUR');
+
+  assert.equal((await authed.patch('/api/auth/me', { currency: 'eur' })).status, 400);
+  assert.equal((await authed.patch('/api/auth/me', { currency: 'US' })).status, 400);
+});
+
 test('POST /login succeeds with the right password, 401 otherwise', async () => {
   await register('login@user.com', 'rightpassword');
 

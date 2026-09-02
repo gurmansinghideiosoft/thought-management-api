@@ -81,6 +81,7 @@ export const updateProfile = async (
     name?: string;
     homeBanner?: string | null;
     journalBanner?: string | null;
+    currency?: string;
   },
 ): Promise<UserDocument> => {
   const user = await User.findById(userId);
@@ -96,6 +97,7 @@ export const updateProfile = async (
   if (patch.name !== undefined) user.name = patch.name;
   if (patch.homeBanner !== undefined) user.homeBanner = patch.homeBanner;
   if (patch.journalBanner !== undefined) user.journalBanner = patch.journalBanner;
+  if (patch.currency !== undefined) user.currency = patch.currency;
 
   await user.save();
   return user;

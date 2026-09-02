@@ -25,6 +25,10 @@ export const updateMeBody = z
     name: z.string().trim().max(100).optional(),
     homeBanner: bannerId.optional(),
     journalBanner: bannerId.optional(),
+    currency: z
+      .string()
+      .regex(/^[A-Z]{3}$/, 'Expected a 3-letter ISO 4217 code')
+      .optional(),
   })
   .refine((v) => Object.keys(v).length > 0, {
     message: 'Provide at least one field to update',

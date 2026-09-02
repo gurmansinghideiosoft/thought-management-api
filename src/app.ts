@@ -10,6 +10,7 @@ import { errorHandler, notFound } from './middleware/errorHandler.ts';
 import activityRouter from './routes/activity.ts';
 import authRouter from './routes/auth.ts';
 import conversationsRouter from './routes/conversations.ts';
+import financeRouter from './routes/finance.ts';
 import healthRouter from './routes/health.ts';
 import invitesRouter from './routes/invites.ts';
 import journalRouter from './routes/journal.ts';
@@ -116,6 +117,7 @@ app.use('/api/tasks', requireAuth, tasksRouter);
 app.use('/api/task-tags', requireAuth, taskTagsRouter);
 app.use('/api/routine', requireAuth, routineRouter);
 app.use('/api/journal', requireAuth, journalRouter);
+app.use('/api/finance', requireAuth, financeRouter);
 app.use('/api/vault', requireAuth, vaultRouter);
 
 // --- Fallbacks ---------------------------------------------------

@@ -12,6 +12,8 @@ export interface UserAttrs {
   /** Chosen hero-banner id (from the frontend's fixed list); `null` = default. */
   homeBanner: string | null;
   journalBanner: string | null;
+  /** ISO 4217 code used to format money in the Finance section. */
+  currency: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -45,6 +47,7 @@ const userSchema = new Schema(
     },
     homeBanner: { type: String, maxlength: 64, default: null },
     journalBanner: { type: String, maxlength: 64, default: null },
+    currency: { type: String, match: /^[A-Z]{3}$/, default: 'USD' },
   },
   { timestamps: true },
 );
