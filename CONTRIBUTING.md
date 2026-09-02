@@ -48,10 +48,15 @@ default. Everything under `/api/thoughts`,
 `/api/journal`, `/api/reviews`, `/api/habits`, `/api/captures`, `/api/finance`,
 `/api/export` and `/api/vault` sits behind
 `requireAuth`, which verifies the `Bearer` access JWT, rejects blacklisted `jti`s
-(`TokenDenylist`, a TTL collection), and sets `req.auth`. Handlers read the user
+(`TokenDenylist`, a TTL collection), rejects any token whose `iat` predates the
+user's `passwordChangedAt`, and sets `req.auth`. Handlers read the user
 with `getAuth(req)` and pass `userId` into every service call. Writes to a thought
 and its entries stay filtered by `ownerId`; a thought that exists but isn't yours
-returns **404**, never 403. Refresh tokens rotate — using an old one 401s. In
+returns **404**, never 403. Refresh tokens rotate — using an old one 401s.
+`POST /api/auth/change-password` (`{ currentPassword, newPassword }`, behind
+`requireAuth` + the tight auth limiter) checks the current password, stamps
+`User.passwordChangedAt` (so every other device is signed out on its next
+request), and returns a fresh token pair for the caller. In
 tests, `useTestApp().registerAndClient()` returns an authed `api` client;
 `seedThought(ownerId, …)` / `seedEntry(thoughtId, ownerId, …)` need the owner.
 

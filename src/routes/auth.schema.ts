@@ -34,6 +34,11 @@ export const updateMeBody = z
     message: 'Provide at least one field to update',
   });
 
+export const changePasswordBody = z.object({
+  currentPassword: z.string().min(1).max(200),
+  newPassword: z.string().min(8).max(200),
+});
+
 export const loginBody = z.object({
   email: z.email().max(254),
   password: z.string().min(1).max(200),

@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { getAuth, requireAuth } from '../middleware/auth.ts';
 import * as auth from '../services/auth.service.ts';
 import {
+  changePasswordBody,
   loginBody,
   logoutBody,
   refreshBody,
@@ -42,6 +43,16 @@ router.post('/logout', requireAuth, async (req, res) => {
   const { refreshToken } = logoutBody.parse(req.body);
   await auth.logout({ accessJti: jti, accessExp: exp, refreshToken });
   res.status(204).end();
+});
+
+router.post('/change-password', requireAuth, async (req, res) => {
+  const { currentPassword, newPassword } = changePasswordBody.parse(req.body);
+  const { user, accessToken, refreshToken } = await auth.changePassword(
+    getAuth(req).userId,
+    currentPassword,
+    newPassword,
+  );
+  res.json({ user, accessToken, refreshToken });
 });
 
 router.get('/me', requireAuth, async (req, res) => {

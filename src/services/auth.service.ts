@@ -103,6 +103,32 @@ export const updateProfile = async (
   return user;
 };
 
+/**
+ * Change the caller's password. Returns a fresh token pair so the current
+ * device stays signed in; `passwordChangedAt` invalidates every other token.
+ */
+export const changePassword = async (
+  userId: string,
+  currentPassword: string,
+  newPassword: string,
+): Promise<AuthResult> => {
+  const user = await User.findById(userId).select('+passwordHash');
+  if (!user) throw notFoundError('User not found');
+
+  if (!(await verifyPassword(user.passwordHash, currentPassword))) {
+    throw new AppError('Current password is incorrect', 400);
+  }
+  if (await verifyPassword(user.passwordHash, newPassword)) {
+    throw new AppError('New password must be different from the current one', 400);
+  }
+
+  user.passwordHash = await hashPassword(newPassword);
+  user.passwordChangedAt = new Date();
+  await user.save();
+
+  return { user, ...issueTokens(String(user._id)) };
+};
+
 export const login = async (input: {
   email: string;
   password: string;

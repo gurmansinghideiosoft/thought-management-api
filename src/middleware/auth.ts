@@ -2,6 +2,7 @@ import type { Request, RequestHandler } from 'express';
 
 import { AppError } from '../errors.ts';
 import { verifyAccess } from '../lib/jwt.ts';
+import { User } from '../models/user.model.ts';
 import { isBlacklisted } from '../services/auth.service.ts';
 
 /**
@@ -18,6 +19,19 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
   const claims = verifyAccess(token);
   if (await isBlacklisted(claims.jti)) {
     throw new AppError('Invalid or expired token', 401);
+  }
+
+  // A password change stamps `passwordChangedAt`; every token minted before it
+  // is dead, which is how "sign out everywhere" works.
+  const user = await User.findById(claims.sub).select('passwordChangedAt');
+  if (!user) {
+    throw new AppError('Invalid or expired token', 401);
+  }
+  if (
+    user.passwordChangedAt &&
+    claims.iat < Math.floor(user.passwordChangedAt.getTime() / 1000)
+  ) {
+    throw new AppError('Session expired — please sign in again', 401);
   }
 
   req.auth = { userId: claims.sub, jti: claims.jti, exp: claims.exp };

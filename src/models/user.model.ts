@@ -14,6 +14,11 @@ export interface UserAttrs {
   journalBanner: string | null;
   /** ISO 4217 code used to format money in the Finance section. */
   currency: string;
+  /**
+   * When the password was last changed. `requireAuth` rejects any access token
+   * minted before this instant, so a password change signs out every device.
+   */
+  passwordChangedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -48,6 +53,7 @@ const userSchema = new Schema(
     homeBanner: { type: String, maxlength: 64, default: null },
     journalBanner: { type: String, maxlength: 64, default: null },
     currency: { type: String, match: /^[A-Z]{3}$/, default: 'USD' },
+    passwordChangedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
@@ -61,6 +67,7 @@ userSchema.set('toJSON', {
       delete ret._id;
     }
     delete ret.passwordHash;
+    delete ret.passwordChangedAt;
     return ret;
   },
 });

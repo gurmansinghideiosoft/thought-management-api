@@ -247,3 +247,117 @@ test('protected resources reject anonymous requests', async () => {
   assert.equal((await anon().get('/api/activity')).status, 401);
   assert.equal((await anon().post('/api/thoughts', { title: 'x' })).status, 401);
 });
+
+test('POST /change-password swaps the password and returns fresh tokens', async () => {
+  const { body } = await register('pw@user.com', 'password123', 'pw_user');
+  const authed = makeClient(app.url, body.accessToken);
+
+  const res = await authed.post<AuthBody>('/api/auth/change-password', {
+    currentPassword: 'password123',
+    newPassword: 'a-new-secret-9',
+  });
+  assert.equal(res.status, 200);
+  assert.ok(res.body.accessToken);
+  assert.ok(res.body.refreshToken);
+  assert.equal(res.body.user.passwordHash, undefined);
+
+  // The freshly returned token works.
+  assert.equal(
+    (await makeClient(app.url, res.body.accessToken).get('/api/auth/me')).status,
+    200,
+  );
+  // Login now needs the new password.
+  assert.equal(
+    (
+      await anon().post('/api/auth/login', {
+        email: 'pw@user.com',
+        password: 'password123',
+      })
+    ).status,
+    401,
+  );
+  assert.equal(
+    (
+      await anon().post('/api/auth/login', {
+        email: 'pw@user.com',
+        password: 'a-new-secret-9',
+      })
+    ).status,
+    200,
+  );
+});
+
+test('POST /change-password signs out every other session', async () => {
+  const { body } = await register('kick@user.com', 'password123', 'kick_user');
+  assert.equal(
+    (await makeClient(app.url, body.accessToken).get('/api/auth/me')).status,
+    200,
+  );
+
+  // The invalidation check is second-granular; make sure the old token's `iat`
+  // sits in an earlier second than the change.
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+
+  const changed = await makeClient(app.url, body.accessToken).post<AuthBody>(
+    '/api/auth/change-password',
+    { currentPassword: 'password123', newPassword: 'fresh-password-1' },
+  );
+  assert.equal(changed.status, 200);
+
+  // Every token minted before the change is now dead, on any route.
+  assert.equal(
+    (await makeClient(app.url, body.accessToken).get('/api/auth/me')).status,
+    401,
+  );
+  assert.equal(
+    (await makeClient(app.url, body.accessToken).get('/api/thoughts')).status,
+    401,
+  );
+  // The token the change handed back still works.
+  assert.equal(
+    (await makeClient(app.url, changed.body.accessToken).get('/api/auth/me')).status,
+    200,
+  );
+});
+
+test('POST /change-password validates the current and new passwords', async () => {
+  const { body } = await register('pwval@user.com', 'password123', 'pwval_user');
+  const authed = makeClient(app.url, body.accessToken);
+
+  assert.equal(
+    (
+      await authed.post('/api/auth/change-password', {
+        currentPassword: 'wrong-one',
+        newPassword: 'another-secret-1',
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await authed.post('/api/auth/change-password', {
+        currentPassword: 'password123',
+        newPassword: 'password123',
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await authed.post('/api/auth/change-password', {
+        currentPassword: 'password123',
+        newPassword: 'short',
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await anon().post('/api/auth/change-password', {
+        currentPassword: 'password123',
+        newPassword: 'whatever-9-long',
+      })
+    ).status,
+    401,
+  );
+});
