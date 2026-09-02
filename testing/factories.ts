@@ -23,6 +23,11 @@ import { HabitEntry, type HabitEntryDocument } from '../src/models/habitEntry.mo
 import { FinanceTag, type FinanceTagDocument } from '../src/models/financeTag.model.ts';
 import { JournalEntry } from '../src/models/journal.model.ts';
 import { Message, type MessageDocument } from '../src/models/message.model.ts';
+import {
+  Review,
+  type ReviewDocument,
+  type ReviewPeriod,
+} from '../src/models/review.model.ts';
 import { Routine } from '../src/models/routine.model.ts';
 import {
   RecurringTransaction,
@@ -361,4 +366,27 @@ export const seedTransaction = (
     kind: overrides.kind ?? 'spending',
     date: overrides.date ?? '2026-09-15',
     tagId: overrides.tagId ?? null,
+  });
+
+interface ReviewOverrides {
+  period?: ReviewPeriod;
+  periodKey?: string;
+  intentions?: string;
+  reflection?: string;
+  rating?: number | null;
+  completedAt?: Date | null;
+}
+
+export const seedReview = (
+  ownerId: Types.ObjectId | string,
+  overrides: ReviewOverrides = {},
+): Promise<ReviewDocument> =>
+  Review.create({
+    ownerId,
+    period: overrides.period ?? 'week',
+    periodKey: overrides.periodKey ?? '2026-W38',
+    intentions: overrides.intentions ?? '',
+    reflection: overrides.reflection ?? '',
+    rating: overrides.rating ?? null,
+    completedAt: overrides.completedAt ?? null,
   });

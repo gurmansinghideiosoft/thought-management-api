@@ -7,8 +7,10 @@ import { HabitEntry, type HabitEntryDocument } from '../models/habitEntry.model.
 
 const owner = (ownerId: string): Types.ObjectId => new Types.ObjectId(ownerId);
 
-const isDone = (habit: Pick<HabitAttrs, 'type' | 'target'>, value: number): boolean =>
-  habit.type === 'binary' ? value >= 1 : value >= habit.target;
+export const isDone = (
+  habit: Pick<HabitAttrs, 'type' | 'target'>,
+  value: number,
+): boolean => (habit.type === 'binary' ? value >= 1 : value >= habit.target);
 
 interface Streak {
   current: number;

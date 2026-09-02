@@ -45,8 +45,8 @@ the client walks them through picking one) and also carries `homeBanner` /
 `journalBanner` — opaque ids from the frontend's fixed hero-image list, `null` =
 default. Everything under `/api/thoughts`,
 `/api/activity`, `/api/tasks`, `/api/task-tags`, `/api/routine`,
-`/api/journal`, `/api/habits`, `/api/captures`, `/api/finance` and `/api/vault`
-sits behind
+`/api/journal`, `/api/reviews`, `/api/habits`, `/api/captures`, `/api/finance`
+and `/api/vault` sits behind
 `requireAuth`, which verifies the `Bearer` access JWT, rejects blacklisted `jti`s
 (`TokenDenylist`, a TTL collection), and sets `req.auth`. Handlers read the user
 with `getAuth(req)` and pass `userId` into every service call. Writes to a thought
@@ -111,6 +111,22 @@ captures (text), owner-scoped, `limit` (default 6) per group. Returns
 where each hit carries a `snippet` (window around the match) and what the
 client needs to link to it. `q` must be ≥ 2 chars. No index changes — fine at
 personal scale; swap to `$text` if it ever isn't.
+
+**Reviews (`/api/reviews`):** a weekly / monthly synthesis. Almost pure
+aggregation over data that already exists; the only stored thing is a `Review`
+`{ period: week|month, periodKey (2026-W38 | 2026-09), intentions, reflection,
+rating 1–5|null, completedAt }` (unique per `{ owner, period, periodKey }`).
+`GET /summary?period=&anchor=&today=` builds the period + the one before it
+(`weekBounds` is Monday-first; `isoWeekKey` / `monthKey` in `src/lib/day.ts`) and
+returns per-section counts with `*Prev` deltas — tasks done/open, journal
+entries + words + `getStreak`, `financeService.getSummary` twice, entries grouped
+by thought, habit done/possible rates, capture counts — plus this period's own
+`saved` review, the prior period's `prevReview` (the carry-forward loop), and
+`completedStreak` (consecutive completed periods, grace on the current one).
+`PUT /:period/:periodKey` upserts the review (`completed: true` stamps
+`completedAt` once; `false` clears it). `GET /?period=&limit=` lists completed
+reviews, newest first. `anchor` / `today` are `YYYY-MM-DD` test hooks like
+`/journal/streak`.
 
 **Habits (`/api/habits`):** daily `binary` (yes/no) or `count` (toward a
 `target`) habits. A `HabitEntry` is `{ habitId, date (YYYY-MM-DD), value }` and
