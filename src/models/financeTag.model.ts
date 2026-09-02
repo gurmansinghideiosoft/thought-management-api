@@ -6,6 +6,8 @@ export interface FinanceTagAttrs {
   ownerId: Types.ObjectId;
   name: string;
   color: string;
+  /** Monthly spending target for this category; `null` = no budget. */
+  monthlyBudget: number | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -17,6 +19,7 @@ const financeTagSchema = new Schema(
     ownerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     name: { type: String, required: true, trim: true, minlength: 1, maxlength: 40 },
     color: { type: String, match: /^#[0-9a-fA-F]{6}$/, default: '#6f6d65' },
+    monthlyBudget: { type: Number, min: 0, default: null },
   },
   { timestamps: true },
 );

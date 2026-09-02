@@ -3,10 +3,12 @@ import { Router } from 'express';
 import { getAuth } from '../middleware/auth.ts';
 import * as finance from '../services/finance.service.ts';
 import {
+  createRecurringBody,
   createTagBody,
   createTransactionsBody,
   idParams,
   rangeQuery,
+  updateRecurringBody,
   updateTagBody,
   updateTransactionBody,
 } from './finance.schema.ts';
@@ -44,8 +46,8 @@ router.delete('/tags/:id', async (req, res) => {
 
 router.get('/transactions', async (req, res) => {
   const { userId } = getAuth(req);
-  const range = rangeQuery.parse(req.query);
-  res.json({ items: await finance.listTransactions(userId, range) });
+  const { from, to, today } = rangeQuery.parse(req.query);
+  res.json({ items: await finance.listTransactions(userId, { from, to }, today) });
 });
 
 router.post('/transactions', async (req, res) => {
@@ -72,8 +74,35 @@ router.delete('/transactions/:id', async (req, res) => {
 
 router.get('/summary', async (req, res) => {
   const { userId } = getAuth(req);
-  const range = rangeQuery.parse(req.query);
-  res.json(await finance.getSummary(userId, range));
+  const { from, to, today } = rangeQuery.parse(req.query);
+  res.json(await finance.getSummary(userId, { from, to }, today));
+});
+
+// --- recurring rules --------------------------------------------------
+
+router.get('/recurring', async (req, res) => {
+  const { userId } = getAuth(req);
+  res.json({ items: await finance.listRecurring(userId) });
+});
+
+router.post('/recurring', async (req, res) => {
+  const { userId } = getAuth(req);
+  const body = createRecurringBody.parse(req.body);
+  res.status(201).json(await finance.createRecurring(userId, body));
+});
+
+router.patch('/recurring/:id', async (req, res) => {
+  const { userId } = getAuth(req);
+  const { id } = idParams.parse(req.params);
+  const patch = updateRecurringBody.parse(req.body);
+  res.json(await finance.updateRecurring(userId, id, patch));
+});
+
+router.delete('/recurring/:id', async (req, res) => {
+  const { userId } = getAuth(req);
+  const { id } = idParams.parse(req.params);
+  await finance.deleteRecurring(userId, id);
+  res.status(204).end();
 });
 
 export default router;

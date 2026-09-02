@@ -1,7 +1,12 @@
 import { Types } from 'mongoose';
 
 import { notFoundError } from '../errors.ts';
+import { todayUtc } from '../lib/day.ts';
 import { FinanceTag, type FinanceTagDocument } from '../models/financeTag.model.ts';
+import {
+  RecurringTransaction,
+  type RecurringTransactionDocument,
+} from '../models/recurringTransaction.model.ts';
 import {
   Transaction,
   type TransactionDocument,
@@ -14,6 +19,85 @@ const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 1
 
 const UNTAGGED = { name: 'Untagged', color: '#6f6d65' } as const;
 
+const monthKey = (day: string): string => day.slice(0, 7);
+
+const nextMonthKey = (mk: string): string => {
+  const [y, m] = mk.split('-').map(Number) as [number, number];
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+};
+
+/** `YYYY-MM-DD` for `dayOfMonth` in month `mk`, clamped to the month's length. */
+const scheduledDate = (mk: string, dayOfMonth: number): string => {
+  const [y, m] = mk.split('-').map(Number) as [number, number];
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${mk}-${String(Math.min(dayOfMonth, lastDay)).padStart(2, '0')}`;
+};
+
+/**
+ * Post any due-and-not-yet-posted rows for the user's active recurring rules.
+ * Called lazily whenever finance data is read — this backend has no scheduler.
+ * Each read posts at most the months in `(lastPostedMonth, thisMonth]` whose
+ * scheduled day has already passed; deleting a posted row does not bring it back.
+ */
+export const materializeRecurring = async (
+  ownerId: string,
+  today: string = todayUtc(),
+): Promise<void> => {
+  const rules = await RecurringTransaction.find({
+    ownerId: owner(ownerId),
+    active: true,
+  });
+  if (rules.length === 0) return;
+
+  const thisMonth = monthKey(today);
+  const inserts: Record<string, unknown>[] = [];
+  const bumps: { id: Types.ObjectId; month: string }[] = [];
+
+  for (const rule of rules) {
+    const start = rule.lastPostedMonth
+      ? nextMonthKey(rule.lastPostedMonth)
+      : monthKey(rule.createdAt.toISOString().slice(0, 10));
+    if (start > thisMonth) continue;
+
+    let month = start;
+    let highest: string | null = null;
+    for (let i = 0; i < 24 && month <= thisMonth; i += 1) {
+      const date = scheduledDate(month, rule.dayOfMonth);
+      if (date <= today) {
+        inserts.push({
+          ownerId: owner(ownerId),
+          title: rule.title,
+          amount: round2(rule.amount),
+          kind: rule.kind,
+          tagId: rule.tagId,
+          date,
+          recurringId: rule._id,
+        });
+        highest = month;
+      }
+      month = nextMonthKey(month);
+    }
+    if (highest) bumps.push({ id: rule._id, month: highest });
+  }
+
+  if (inserts.length > 0) {
+    try {
+      await Transaction.insertMany(inserts, { ordered: false });
+    } catch (err) {
+      // A concurrent materialisation may have inserted the same row first.
+      if ((err as { code?: number }).code !== 11000) throw err;
+    }
+  }
+  await Promise.all(
+    bumps.map((b) =>
+      RecurringTransaction.updateOne(
+        { _id: b.id },
+        { $set: { lastPostedMonth: b.month } },
+      ),
+    ),
+  );
+};
+
 // --- tags -----------------------------------------------------------------
 
 export const listTags = (ownerId: string): Promise<FinanceTagDocument[]> =>
@@ -21,12 +105,13 @@ export const listTags = (ownerId: string): Promise<FinanceTagDocument[]> =>
 
 export const createTag = (
   ownerId: string,
-  input: { name: string; color?: string },
+  input: { name: string; color?: string; monthlyBudget?: number | null },
 ): Promise<FinanceTagDocument> =>
   FinanceTag.create({
     ownerId: owner(ownerId),
     name: input.name.trim(),
     ...(input.color ? { color: input.color } : {}),
+    ...(input.monthlyBudget !== undefined ? { monthlyBudget: input.monthlyBudget } : {}),
   });
 
 export const getTagOrThrow = async (
@@ -41,11 +126,12 @@ export const getTagOrThrow = async (
 export const updateTag = async (
   ownerId: string,
   id: string,
-  patch: { name?: string; color?: string },
+  patch: { name?: string; color?: string; monthlyBudget?: number | null },
 ): Promise<FinanceTagDocument> => {
   const tag = await getTagOrThrow(ownerId, id);
   if (patch.name !== undefined) tag.name = patch.name.trim();
   if (patch.color !== undefined) tag.color = patch.color;
+  if (patch.monthlyBudget !== undefined) tag.monthlyBudget = patch.monthlyBudget;
   await tag.save();
   return tag;
 };
@@ -85,13 +171,16 @@ export interface TransactionInput {
   tagId?: string | null;
 }
 
-export const listTransactions = (
+export const listTransactions = async (
   ownerId: string,
   { from, to }: Range,
-): Promise<TransactionDocument[]> =>
-  Transaction.find({ ownerId: owner(ownerId), date: { $gte: from, $lte: to } })
+  today: string = todayUtc(),
+): Promise<TransactionDocument[]> => {
+  await materializeRecurring(ownerId, today);
+  return Transaction.find({ ownerId: owner(ownerId), date: { $gte: from, $lte: to } })
     .sort({ date: -1, _id: -1 })
     .limit(2000);
+};
 
 export const createTransactions = async (
   ownerId: string,
@@ -161,6 +250,8 @@ export interface TagSpend {
   color: string;
   total: number;
   count: number;
+  /** The tag's monthly budget, if it has one. */
+  budget: number | null;
 }
 
 export interface FinanceSummary {
@@ -187,7 +278,10 @@ interface TagGroup {
 export const getSummary = async (
   ownerId: string,
   { from, to }: Range,
+  today: string = todayUtc(),
 ): Promise<FinanceSummary> => {
+  await materializeRecurring(ownerId, today);
+
   const [facet] = await Transaction.aggregate<{
     totals: KindGroup[];
     byTag: TagGroup[];
@@ -227,6 +321,7 @@ export const getSummary = async (
       color: tag?.color ?? UNTAGGED.color,
       total: round2(g.total),
       count: g.count,
+      budget: tag?.monthlyBudget ?? null,
     };
   });
 
@@ -239,4 +334,78 @@ export const getSummary = async (
     count,
     byTag,
   };
+};
+
+// --- recurring rules ---------------------------------------------------
+
+export interface RecurringInput {
+  title: string;
+  amount: number;
+  kind?: TransactionKind;
+  tagId?: string | null;
+  dayOfMonth: number;
+  active?: boolean;
+}
+
+export const listRecurring = (ownerId: string): Promise<RecurringTransactionDocument[]> =>
+  RecurringTransaction.find({ ownerId: owner(ownerId) }).sort({ title: 1 });
+
+export const getRecurringOrThrow = async (
+  ownerId: string,
+  id: string,
+): Promise<RecurringTransactionDocument> => {
+  const rule = await RecurringTransaction.findOne({ _id: id, ownerId: owner(ownerId) });
+  if (!rule) throw notFoundError('Recurring rule not found');
+  return rule;
+};
+
+export const createRecurring = async (
+  ownerId: string,
+  input: RecurringInput,
+  today: string = todayUtc(),
+): Promise<RecurringTransactionDocument> => {
+  if (input.tagId) await assertTagsExist(ownerId, [input.tagId]);
+  const rule = await RecurringTransaction.create({
+    ownerId: owner(ownerId),
+    title: input.title.trim(),
+    amount: round2(input.amount),
+    kind: input.kind ?? 'spending',
+    tagId: input.tagId ? new Types.ObjectId(input.tagId) : null,
+    dayOfMonth: input.dayOfMonth,
+    active: input.active ?? true,
+  });
+  await materializeRecurring(ownerId, today);
+  return (await RecurringTransaction.findById(rule._id))!;
+};
+
+export const updateRecurring = async (
+  ownerId: string,
+  id: string,
+  patch: Partial<RecurringInput>,
+  today: string = todayUtc(),
+): Promise<RecurringTransactionDocument> => {
+  const rule = await getRecurringOrThrow(ownerId, id);
+  if (patch.tagId) await assertTagsExist(ownerId, [patch.tagId]);
+
+  if (patch.title !== undefined) rule.title = patch.title.trim();
+  if (patch.amount !== undefined) rule.amount = round2(patch.amount);
+  if (patch.kind !== undefined) rule.kind = patch.kind;
+  if (patch.dayOfMonth !== undefined) rule.dayOfMonth = patch.dayOfMonth;
+  if (patch.active !== undefined) rule.active = patch.active;
+  if (patch.tagId !== undefined) {
+    rule.tagId = patch.tagId ? new Types.ObjectId(patch.tagId) : null;
+  }
+  await rule.save();
+  await materializeRecurring(ownerId, today);
+  return (await RecurringTransaction.findById(id))!;
+};
+
+export const deleteRecurring = async (ownerId: string, id: string): Promise<void> => {
+  const rule = await getRecurringOrThrow(ownerId, id);
+  // The rows it already posted stay — they're real spending; just cut the link.
+  await Transaction.updateMany(
+    { ownerId: owner(ownerId), recurringId: rule._id },
+    { $set: { recurringId: null } },
+  );
+  await rule.deleteOne();
 };

@@ -22,6 +22,10 @@ import { FinanceTag, type FinanceTagDocument } from '../src/models/financeTag.mo
 import { JournalEntry } from '../src/models/journal.model.ts';
 import { Message, type MessageDocument } from '../src/models/message.model.ts';
 import { Routine } from '../src/models/routine.model.ts';
+import {
+  RecurringTransaction,
+  type RecurringTransactionDocument,
+} from '../src/models/recurringTransaction.model.ts';
 import { Task, type TaskDocument, type TaskStatus } from '../src/models/task.model.ts';
 import { TaskTag, type TaskTagDocument } from '../src/models/taskTag.model.ts';
 import {
@@ -262,6 +266,31 @@ export const seedFinanceTag = (
     ownerId,
     name: overrides.name ?? `fintag-${randomUUID().slice(0, 8)}`,
     ...(overrides.color ? { color: overrides.color } : {}),
+  });
+
+interface RecurringOverrides {
+  title?: string;
+  amount?: number;
+  kind?: TransactionKind;
+  tagId?: Types.ObjectId | null;
+  dayOfMonth?: number;
+  active?: boolean;
+  lastPostedMonth?: string | null;
+}
+
+export const seedRecurringTransaction = (
+  ownerId: Types.ObjectId | string,
+  overrides: RecurringOverrides = {},
+): Promise<RecurringTransactionDocument> =>
+  RecurringTransaction.create({
+    ownerId,
+    title: overrides.title ?? 'Rent',
+    amount: overrides.amount ?? 1000,
+    kind: overrides.kind ?? 'spending',
+    tagId: overrides.tagId ?? null,
+    dayOfMonth: overrides.dayOfMonth ?? 1,
+    active: overrides.active ?? true,
+    lastPostedMonth: overrides.lastPostedMonth ?? null,
   });
 
 interface TransactionOverrides {

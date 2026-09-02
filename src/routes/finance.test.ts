@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict';
 import test, { beforeEach } from 'node:test';
 
-import { seedFinanceTag, seedTransaction } from '../../testing/factories.ts';
+import {
+  seedFinanceTag,
+  seedRecurringTransaction,
+  seedTransaction,
+} from '../../testing/factories.ts';
 import { type AuthedClient, useTestApp } from '../../testing/harness.ts';
+import { RecurringTransaction } from '../models/recurringTransaction.model.ts';
 import { Transaction } from '../models/transaction.model.ts';
 
 const app = useTestApp();
@@ -17,6 +22,7 @@ interface Tag {
   id: string;
   name: string;
   color: string;
+  monthlyBudget: number | null;
 }
 interface Txn {
   id: string;
@@ -25,13 +31,28 @@ interface Txn {
   kind: 'spending' | 'earning';
   date: string;
   tagId: string | null;
+  recurringId: string | null;
 }
 interface Summary {
   totalSpending: number;
   totalEarning: number;
   net: number;
   count: number;
-  byTag: { tagId: string | null; name: string; total: number; count: number }[];
+  byTag: {
+    tagId: string | null;
+    name: string;
+    total: number;
+    count: number;
+    budget: number | null;
+  }[];
+}
+interface Recurring {
+  id: string;
+  title: string;
+  amount: number;
+  dayOfMonth: number;
+  active: boolean;
+  lastPostedMonth: string | null;
 }
 
 const RANGE = 'from=2026-09-01&to=2026-09-30';
@@ -221,4 +242,110 @@ test('one user cannot touch another user’s finance data', async () => {
     `/api/finance/transactions?${RANGE}`,
   );
   assert.deepEqual(feed.body.items, []);
+});
+
+// --- budgets --------------------------------------------------------
+
+test('a tag budget is set, cleared with null, and shows up in the summary', async () => {
+  const tag = await seedFinanceTag(auth.userId, { name: 'grocery' });
+  const id = String(tag._id);
+
+  const created = await api().get<{ items: Tag[] }>('/api/finance/tags');
+  assert.equal(created.body.items[0]!.monthlyBudget, null);
+
+  const set = await api().patch<Tag>(`/api/finance/tags/${id}`, { monthlyBudget: 8000 });
+  assert.equal(set.body.monthlyBudget, 8000);
+
+  await seedTransaction(auth.userId, { amount: 200, tagId: tag._id, date: '2026-09-04' });
+  const summary = await api().get<Summary>(`/api/finance/summary?${RANGE}`);
+  assert.equal(summary.body.byTag.find((b) => b.name === 'grocery')?.budget, 8000);
+
+  const cleared = await api().patch<Tag>(`/api/finance/tags/${id}`, {
+    monthlyBudget: null,
+  });
+  assert.equal(cleared.body.monthlyBudget, null);
+});
+
+// --- recurring transactions --------------------------------------
+
+test('a recurring rule posts its transaction once its day has passed', async () => {
+  const tag = await seedFinanceTag(auth.userId, { name: 'bills' });
+  const rule = await api().post<Recurring>('/api/finance/recurring', {
+    title: 'Rent',
+    amount: 1500,
+    dayOfMonth: 15,
+    tagId: String(tag._id),
+  });
+  assert.equal(rule.status, 201);
+
+  // Before the 15th — nothing posted.
+  const early = await api().get<{ items: Txn[] }>(
+    `/api/finance/transactions?${RANGE}&today=2026-09-10`,
+  );
+  assert.deepEqual(early.body.items, []);
+
+  // On/after the 15th — it posts, tagged to the rule.
+  const due = await api().get<{ items: Txn[] }>(
+    `/api/finance/transactions?${RANGE}&today=2026-09-20`,
+  );
+  assert.equal(due.body.items.length, 1);
+  assert.equal(due.body.items[0]!.title, 'Rent');
+  assert.equal(due.body.items[0]!.date, '2026-09-15');
+  assert.equal(due.body.items[0]!.recurringId, rule.body.id);
+
+  // Reading again doesn't post a second copy.
+  const again = await api().get<{ items: Txn[] }>(
+    `/api/finance/transactions?${RANGE}&today=2026-09-25`,
+  );
+  assert.equal(again.body.items.length, 1);
+
+  const rules = await api().get<{ items: Recurring[] }>('/api/finance/recurring');
+  assert.equal(rules.body.items[0]!.lastPostedMonth, '2026-09');
+});
+
+test('deleting a recurring rule keeps its posted rows but unlinks them', async () => {
+  const rule = await seedRecurringTransaction(auth.userId, {
+    title: 'Netflix',
+    amount: 15,
+    dayOfMonth: 1,
+    lastPostedMonth: null,
+  });
+  await api().get(`/api/finance/transactions?${RANGE}&today=2026-09-05`);
+  assert.equal(
+    await Transaction.countDocuments({ ownerId: auth.userId, recurringId: rule._id }),
+    1,
+  );
+
+  const del = await api().del(`/api/finance/recurring/${String(rule._id)}`);
+  assert.equal(del.status, 204);
+
+  const rows = await Transaction.find({ ownerId: auth.userId });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]!.recurringId, null);
+  assert.equal(await RecurringTransaction.countDocuments({ ownerId: auth.userId }), 0);
+});
+
+test('an inactive rule posts nothing', async () => {
+  await seedRecurringTransaction(auth.userId, { dayOfMonth: 1, active: false });
+  const feed = await api().get<{ items: Txn[] }>(
+    `/api/finance/transactions?${RANGE}&today=2026-09-20`,
+  );
+  assert.deepEqual(feed.body.items, []);
+});
+
+test('one user cannot touch another user’s recurring rule', async () => {
+  const rule = await seedRecurringTransaction(auth.userId);
+  const other = await app.registerAndClient();
+  assert.deepEqual(
+    (await other.api.get<{ items: Recurring[] }>('/api/finance/recurring')).body.items,
+    [],
+  );
+  assert.equal(
+    (
+      await other.api.patch(`/api/finance/recurring/${String(rule._id)}`, {
+        amount: 1,
+      })
+    ).status,
+    404,
+  );
 });

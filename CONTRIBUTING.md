@@ -117,8 +117,20 @@ case-insensitive name, `#rrggbb` colour). `POST /transactions` takes a batch
 `GET /transactions?from=&to=` and `GET /summary?from=&to=` are range-scoped
 (`from ≤ to`); the summary aggregates `{ totalSpending, totalEarning, net,
 count, byTag }` where `byTag` is spending-only, sorted desc, with an `Untagged`
-bucket. Deleting a tag nulls `tagId` on its transactions. `User.currency`
-(ISO 4217, default `USD`, set via `PATCH /api/auth/me`) is display-only.
+bucket and each row's `budget`. Deleting a tag nulls `tagId` on its
+transactions. `User.currency` (ISO 4217, default `USD`, set via
+`PATCH /api/auth/me`) is display-only.
+
+`FinanceTag.monthlyBudget` (nullable) is the per-category monthly target, set
+via the tag PATCH. **Recurring rules** (`RecurringTransaction`: `{ title,
+amount, kind, tagId, dayOfMonth 1–31, active, lastPostedMonth }`) are managed at
+`/recurring` (GET / POST / PATCH / DELETE). There is no scheduler: every finance
+_read_ lazily calls `materializeRecurring` — for each active rule it posts a
+`Transaction` (marked `recurringId`) for each month in
+`(lastPostedMonth, thisMonth]` whose day has passed, then bumps
+`lastPostedMonth`. Deleting a posted row does not bring it back; deleting a rule
+keeps its rows but nulls their `recurringId`. Both range endpoints accept
+`?today=` (test hook, like `/journal/streak`).
 
 **Vault (`/api/vault`):** a **zero-knowledge** credential store. The client
 derives a key from a master password (Argon2id) and encrypts everything in the

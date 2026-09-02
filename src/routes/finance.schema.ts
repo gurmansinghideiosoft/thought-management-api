@@ -5,13 +5,15 @@ import { objectId } from '../schemas/common.ts';
 const dayKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD');
 const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Must be a #rrggbb hex color');
 const amount = z.number().positive().finite().max(1e12);
+const budget = z.number().nonnegative().finite().max(1e12);
 const kind = z.enum(['spending', 'earning']);
 const title = z.string().trim().min(1).max(120);
+const dayOfMonth = z.number().int().min(1).max(31);
 
 export const idParams = z.object({ id: objectId });
 
 export const rangeQuery = z
-  .object({ from: dayKey, to: dayKey })
+  .object({ from: dayKey, to: dayKey, today: dayKey.optional() })
   .refine((v) => v.from <= v.to, { message: '`from` must be on or before `to`' });
 
 // --- tags ---------------------------------------------------------------
@@ -19,12 +21,38 @@ export const rangeQuery = z
 export const createTagBody = z.object({
   name: z.string().trim().min(1).max(40),
   color: hexColor.optional(),
+  monthlyBudget: budget.nullish(),
 });
 
 export const updateTagBody = z
   .object({
     name: z.string().trim().min(1).max(40).optional(),
     color: hexColor.optional(),
+    monthlyBudget: budget.nullable().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, {
+    message: 'Provide at least one field to update',
+  });
+
+// --- recurring rules --------------------------------------------------
+
+export const createRecurringBody = z.object({
+  title,
+  amount,
+  kind: kind.default('spending'),
+  tagId: objectId.nullish(),
+  dayOfMonth,
+  active: z.boolean().default(true),
+});
+
+export const updateRecurringBody = z
+  .object({
+    title: title.optional(),
+    amount: amount.optional(),
+    kind: kind.optional(),
+    tagId: objectId.nullable().optional(),
+    dayOfMonth: dayOfMonth.optional(),
+    active: z.boolean().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, {
     message: 'Provide at least one field to update',

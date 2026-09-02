@@ -15,6 +15,8 @@ export interface TransactionAttrs {
   date: string;
   /** `null` = untagged. */
   tagId: Types.ObjectId | null;
+  /** Set when this row was auto-posted from a recurring rule. */
+  recurringId: Types.ObjectId | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -29,6 +31,11 @@ const transactionSchema = new Schema(
     kind: { type: String, enum: TRANSACTION_KINDS, default: 'spending' },
     date: { type: String, required: true, match: /^\d{4}-\d{2}-\d{2}$/ },
     tagId: { type: Schema.Types.ObjectId, ref: 'FinanceTag', default: null },
+    recurringId: {
+      type: Schema.Types.ObjectId,
+      ref: 'RecurringTransaction',
+      default: null,
+    },
   },
   { timestamps: true },
 );
@@ -37,5 +44,10 @@ withJsonId(transactionSchema);
 
 transactionSchema.index({ ownerId: 1, date: -1, _id: -1 });
 transactionSchema.index({ ownerId: 1, tagId: 1 });
+// One auto-posted row per rule per day — guards the materialisation race.
+transactionSchema.index(
+  { recurringId: 1, date: 1 },
+  { unique: true, partialFilterExpression: { recurringId: { $type: 'objectId' } } },
+);
 
 export const Transaction = model<TransactionAttrs>('Transaction', transactionSchema);
