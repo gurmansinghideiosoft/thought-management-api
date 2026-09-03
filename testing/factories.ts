@@ -40,6 +40,7 @@ import {
   Transaction,
   type TransactionDocument,
   type TransactionKind,
+  type LoanDirection,
 } from '../src/models/transaction.model.ts';
 import {
   Thought,
@@ -368,6 +369,45 @@ export const seedTransaction = (
     date: overrides.date ?? '2026-09-15',
     tagId: overrides.tagId ?? null,
   });
+
+interface LoanOverrides {
+  counterparty?: string;
+  direction?: LoanDirection;
+  amount?: number;
+  date?: string;
+  tagId?: Types.ObjectId | null;
+  dueDate?: string | null;
+  note?: string | null;
+  status?: 'open' | 'settled';
+  settledOn?: string | null;
+}
+
+export const seedLoan = (
+  ownerId: Types.ObjectId | string,
+  overrides: LoanOverrides = {},
+): Promise<TransactionDocument> => {
+  const direction = overrides.direction ?? 'lent';
+  const amount = overrides.amount ?? 100;
+  const counterparty = overrides.counterparty ?? 'Sam';
+  return Transaction.create({
+    ownerId,
+    title: `${direction === 'lent' ? 'Lent to' : 'Borrowed from'} ${counterparty}`,
+    amount,
+    kind: direction === 'lent' ? 'spending' : 'earning',
+    date: overrides.date ?? '2026-09-15',
+    tagId: overrides.tagId ?? null,
+    loan: {
+      counterparty,
+      direction,
+      principal: amount,
+      status: overrides.status ?? 'open',
+      settledOn: overrides.settledOn ?? null,
+      dueDate: overrides.dueDate ?? null,
+      note: overrides.note ?? null,
+      repayments: [],
+    },
+  });
+};
 
 export const seedLogEntry = (
   ownerId: Types.ObjectId | string,

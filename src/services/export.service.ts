@@ -246,9 +246,10 @@ export const buildExport = async (ownerId: string): Promise<ExportBundle> => {
         kind: t.kind,
         tag: t.tagId ? (financeTagName.get(String(t.tagId)) ?? '') : '',
         recurring: t.recurringId ? 'yes' : '',
+        loan: t.loan ? `${t.loan.direction}:${t.loan.status}` : '',
         createdAt: t.createdAt,
       })),
-      ['date', 'title', 'amount', 'kind', 'tag', 'recurring', 'createdAt'],
+      ['date', 'title', 'amount', 'kind', 'tag', 'recurring', 'loan', 'createdAt'],
     ),
   });
 
@@ -277,6 +278,40 @@ export const buildExport = async (ownerId: string): Promise<ExportBundle> => {
         lastPostedMonth: r.lastPostedMonth,
       })),
       ['title', 'amount', 'kind', 'tag', 'dayOfMonth', 'active', 'lastPostedMonth'],
+    ),
+  });
+
+  files.push({
+    path: 'finance/loans.csv',
+    content: toCsv(
+      transactions
+        .filter((t) => t.loan)
+        .map((t) => ({
+          counterparty: t.loan!.counterparty,
+          direction: t.loan!.direction,
+          principal: t.loan!.principal,
+          outstanding: t.amount,
+          status: t.loan!.status,
+          date: t.date,
+          settledOn: t.loan!.settledOn ?? '',
+          dueDate: t.loan!.dueDate ?? '',
+          repayments: t.loan!.repayments.length,
+          note: t.loan!.note ?? '',
+          createdAt: t.createdAt,
+        })),
+      [
+        'counterparty',
+        'direction',
+        'principal',
+        'outstanding',
+        'status',
+        'date',
+        'settledOn',
+        'dueDate',
+        'repayments',
+        'note',
+        'createdAt',
+      ],
     ),
   });
 
@@ -350,7 +385,7 @@ export const buildExport = async (ownerId: string): Promise<ExportBundle> => {
     `- ${bt}journal/${bt} — ${journal.length} ${journal.length === 1 ? 'entry' : 'entries'}, one Markdown file per day`,
     `- ${bt}thoughts/${bt} — ${thoughts.length} ${thoughts.length === 1 ? 'thought' : 'thoughts'} with their entries`,
     `- ${bt}tasks.csv${bt} — ${tasks.length} tasks; ${bt}routine.csv${bt} — ${routineItems.length} routine items`,
-    `- ${bt}finance/${bt} — ${transactions.length} transactions, ${financeTags.length} tags, ${recurring.length} recurring rules`,
+    `- ${bt}finance/${bt} — ${transactions.length} transactions, ${financeTags.length} tags, ${recurring.length} recurring rules, ${transactions.filter((t) => t.loan).length} loans`,
     `- ${bt}habits/${bt} — ${habits.length} habits, ${habitEntries.length} logged days`,
     `- ${bt}captures.csv${bt} — ${captures.length} inbox captures`,
     `- ${bt}reviews/${bt} — ${reviews.length} weekly / monthly reviews`,

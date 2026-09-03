@@ -3,11 +3,15 @@ import { Router } from 'express';
 import { getAuth } from '../middleware/auth.ts';
 import * as finance from '../services/finance.service.ts';
 import {
+  createLoanBody,
   createRecurringBody,
   createTagBody,
   createTransactionsBody,
   idParams,
+  loansQuery,
   rangeQuery,
+  repayLoanBody,
+  updateLoanBody,
   updateRecurringBody,
   updateTagBody,
   updateTransactionBody,
@@ -67,6 +71,41 @@ router.delete('/transactions/:id', async (req, res) => {
   const { userId } = getAuth(req);
   const { id } = idParams.parse(req.params);
   await finance.deleteTransaction(userId, id);
+  res.status(204).end();
+});
+
+// --- loans (money lent out / borrowed) ------------------------------
+
+router.get('/loans', async (req, res) => {
+  const { userId } = getAuth(req);
+  const filter = loansQuery.parse(req.query);
+  res.json({ items: await finance.listLoans(userId, filter) });
+});
+
+router.post('/loans', async (req, res) => {
+  const { userId } = getAuth(req);
+  const body = createLoanBody.parse(req.body);
+  res.status(201).json(await finance.createLoan(userId, body));
+});
+
+router.patch('/loans/:id', async (req, res) => {
+  const { userId } = getAuth(req);
+  const { id } = idParams.parse(req.params);
+  const patch = updateLoanBody.parse(req.body);
+  res.json(await finance.updateLoan(userId, id, patch));
+});
+
+router.post('/loans/:id/repay', async (req, res) => {
+  const { userId } = getAuth(req);
+  const { id } = idParams.parse(req.params);
+  const body = repayLoanBody.parse(req.body);
+  res.json(await finance.repayLoan(userId, id, body));
+});
+
+router.delete('/loans/:id', async (req, res) => {
+  const { userId } = getAuth(req);
+  const { id } = idParams.parse(req.params);
+  await finance.deleteLoan(userId, id);
   res.status(204).end();
 });
 

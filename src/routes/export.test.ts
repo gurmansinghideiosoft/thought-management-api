@@ -50,7 +50,7 @@ test('GET /api/export/transactions.csv returns csv with a header row', async () 
   const res = await auth.api.raw('/api/export/transactions.csv');
   assert.equal(res.status, 200);
   assert.match(res.headers.get('content-type') ?? '', /text\/csv/);
-  assert.match(await res.text(), /^date,title,amount,kind,tag,recurring,createdAt/);
+  assert.match(await res.text(), /^date,title,amount,kind,tag,recurring,loan,createdAt/);
 });
 
 test('GET /api/export/data.json returns the structured dump', async () => {

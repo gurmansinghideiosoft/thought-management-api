@@ -1,6 +1,6 @@
 import { Types } from 'mongoose';
 
-import { notFoundError } from '../errors.ts';
+import { badRequest, conflict, notFoundError } from '../errors.ts';
 import { todayUtc } from '../lib/day.ts';
 import { FinanceTag, type FinanceTagDocument } from '../models/financeTag.model.ts';
 import {
@@ -11,6 +11,7 @@ import {
   Transaction,
   type TransactionDocument,
   type TransactionKind,
+  type LoanDirection,
 } from '../models/transaction.model.ts';
 
 const owner = (ownerId: string): Types.ObjectId => new Types.ObjectId(ownerId);
@@ -224,6 +225,12 @@ export const updateTransaction = async (
   },
 ): Promise<TransactionDocument> => {
   const txn = await getTransactionOrThrow(ownerId, id);
+  if (
+    txn.loan &&
+    (patch.amount !== undefined || patch.kind !== undefined || patch.date !== undefined)
+  ) {
+    throw conflict('Use the loan endpoints to change a loan transaction');
+  }
   if (patch.tagId) await assertTagsExist(ownerId, [patch.tagId]);
 
   if (patch.title !== undefined) txn.title = patch.title.trim();
@@ -262,6 +269,12 @@ export interface FinanceSummary {
   net: number;
   count: number;
   byTag: TagSpend[];
+  /** Money still owed *to* you across all open `lent` loans (not range-scoped). */
+  lentOutstanding: number;
+  /** Money you still owe across all open `borrowed` loans (not range-scoped). */
+  borrowedOutstanding: number;
+  /** How many loans are still open. */
+  openLoanCount: number;
 }
 
 interface KindGroup {
@@ -289,17 +302,40 @@ export const getSummary = async (
     { $match: { ownerId: owner(ownerId), date: { $gte: from, $lte: to } } },
     {
       $facet: {
+        // A settled loan's row is history — keep it out of the running totals.
         totals: [
+          { $match: { $or: [{ loan: null }, { 'loan.status': 'open' }] } },
           { $group: { _id: '$kind', total: { $sum: '$amount' }, count: { $sum: 1 } } },
         ],
+        // Lending isn't category spending — exclude every loan-backed row.
         byTag: [
-          { $match: { kind: 'spending' } },
+          { $match: { kind: 'spending', loan: null } },
           { $group: { _id: '$tagId', total: { $sum: '$amount' }, count: { $sum: 1 } } },
           { $sort: { total: -1 } },
         ],
       },
     },
   ]);
+
+  const loanBalances = await Transaction.aggregate<{
+    _id: LoanDirection;
+    total: number;
+    count: number;
+  }>([
+    { $match: { ownerId: owner(ownerId), 'loan.status': 'open' } },
+    {
+      $group: {
+        _id: '$loan.direction',
+        total: { $sum: '$amount' },
+        count: { $sum: 1 },
+      },
+    },
+  ]);
+  const lentOutstanding = round2(loanBalances.find((b) => b._id === 'lent')?.total ?? 0);
+  const borrowedOutstanding = round2(
+    loanBalances.find((b) => b._id === 'borrowed')?.total ?? 0,
+  );
+  const openLoanCount = loanBalances.reduce((sum, b) => sum + b.count, 0);
 
   const totals = facet?.totals ?? [];
   const totalSpending = round2(totals.find((t) => t._id === 'spending')?.total ?? 0);
@@ -333,6 +369,9 @@ export const getSummary = async (
     net: round2(totalEarning - totalSpending),
     count,
     byTag,
+    lentOutstanding,
+    borrowedOutstanding,
+    openLoanCount,
   };
 };
 
@@ -408,4 +447,145 @@ export const deleteRecurring = async (ownerId: string, id: string): Promise<void
     { $set: { recurringId: null } },
   );
   await rule.deleteOne();
+};
+
+// --- loans (money lent out / borrowed) -------------------------------
+
+export interface LoanInput {
+  counterparty: string;
+  direction?: LoanDirection;
+  amount: number;
+  date: string;
+  dueDate?: string | null;
+  note?: string | null;
+  tagId?: string | null;
+  title?: string;
+}
+
+export interface LoanPatch {
+  counterparty?: string;
+  dueDate?: string | null;
+  note?: string | null;
+  tagId?: string | null;
+  title?: string;
+}
+
+export interface LoanListFilter {
+  status: 'open' | 'settled' | 'all';
+  direction: LoanDirection | 'all';
+}
+
+const defaultLoanTitle = (direction: LoanDirection, counterparty: string): string =>
+  `${direction === 'lent' ? 'Lent to' : 'Borrowed from'} ${counterparty}`;
+
+export const listLoans = (
+  ownerId: string,
+  { status, direction }: LoanListFilter,
+): Promise<TransactionDocument[]> => {
+  const query: Record<string, unknown> = {
+    ownerId: owner(ownerId),
+    loan: { $ne: null },
+  };
+  if (status !== 'all') query['loan.status'] = status;
+  if (direction !== 'all') query['loan.direction'] = direction;
+  return Transaction.find(query)
+    .sort({ 'loan.status': 1, date: -1, _id: -1 })
+    .limit(2000);
+};
+
+export const getLoanOrThrow = async (
+  ownerId: string,
+  id: string,
+): Promise<TransactionDocument> => {
+  const txn = await Transaction.findOne({
+    _id: id,
+    ownerId: owner(ownerId),
+    loan: { $ne: null },
+  });
+  if (!txn) throw notFoundError('Loan not found');
+  return txn;
+};
+
+export const createLoan = async (
+  ownerId: string,
+  input: LoanInput,
+): Promise<TransactionDocument> => {
+  if (input.tagId) await assertTagsExist(ownerId, [input.tagId]);
+  const direction = input.direction ?? 'lent';
+  const counterparty = input.counterparty.trim();
+  const principal = round2(input.amount);
+
+  return Transaction.create({
+    ownerId: owner(ownerId),
+    title: input.title?.trim() || defaultLoanTitle(direction, counterparty),
+    amount: principal,
+    kind: direction === 'lent' ? 'spending' : 'earning',
+    date: input.date,
+    tagId: input.tagId ? new Types.ObjectId(input.tagId) : null,
+    loan: {
+      counterparty,
+      direction,
+      principal,
+      status: 'open',
+      settledOn: null,
+      dueDate: input.dueDate ?? null,
+      note: input.note ?? null,
+      repayments: [],
+    },
+  });
+};
+
+export const updateLoan = async (
+  ownerId: string,
+  id: string,
+  patch: LoanPatch,
+): Promise<TransactionDocument> => {
+  const txn = await getLoanOrThrow(ownerId, id);
+  if (patch.tagId) await assertTagsExist(ownerId, [patch.tagId]);
+  const loan = txn.loan!;
+
+  if (patch.counterparty !== undefined) loan.counterparty = patch.counterparty.trim();
+  if (patch.dueDate !== undefined) loan.dueDate = patch.dueDate;
+  if (patch.note !== undefined) loan.note = patch.note;
+  if (patch.title !== undefined) txn.title = patch.title.trim();
+  if (patch.tagId !== undefined) {
+    txn.tagId = patch.tagId ? new Types.ObjectId(patch.tagId) : null;
+  }
+  txn.markModified('loan');
+  await txn.save();
+  return txn;
+};
+
+export const repayLoan = async (
+  ownerId: string,
+  id: string,
+  input: { amount?: number; date?: string },
+  today: string = todayUtc(),
+): Promise<TransactionDocument> => {
+  const txn = await getLoanOrThrow(ownerId, id);
+  const loan = txn.loan!;
+  if (loan.status === 'settled') throw conflict('Loan already settled');
+
+  const outstanding = txn.amount;
+  const pay = round2(input.amount ?? outstanding);
+  if (pay <= 0) throw badRequest('Repayment amount must be positive');
+  if (pay > outstanding) throw badRequest('Repayment exceeds the outstanding balance');
+
+  const date = input.date ?? today;
+  txn.amount = round2(outstanding - pay);
+  loan.repayments.push({ amount: pay, date, at: new Date() });
+  if (txn.amount <= 0) {
+    txn.amount = 0;
+    loan.status = 'settled';
+    loan.settledOn = date;
+  }
+  txn.markModified('loan');
+  await txn.save();
+  return txn;
+};
+
+export const deleteLoan = async (ownerId: string, id: string): Promise<void> => {
+  const txn = await getLoanOrThrow(ownerId, id);
+  // Cancelling a loan removes the whole row — it never really moved money.
+  await txn.deleteOne();
 };

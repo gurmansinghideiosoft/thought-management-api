@@ -111,7 +111,7 @@ test('transactions.csv has a header, one row per txn, and resolves tag names', a
   await seedAll();
   const b = await buildExport(uid());
   const rows = content(b, 'finance/transactions.csv').split('\r\n');
-  assert.equal(rows[0], 'date,title,amount,kind,tag,recurring,createdAt');
+  assert.equal(rows[0], 'date,title,amount,kind,tag,recurring,loan,createdAt');
   assert.equal(rows.length, 4); // header + 3
   assert.ok(rows.some((r) => r.includes('Groceries')));
 });

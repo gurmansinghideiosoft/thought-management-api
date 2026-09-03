@@ -83,3 +83,44 @@ export const updateTransactionBody = z
   .refine((v) => Object.keys(v).length > 0, {
     message: 'Provide at least one field to update',
   });
+
+// --- loans (money lent out / borrowed) ------------------------------
+
+const counterparty = z.string().trim().min(1).max(80);
+const note = z.string().trim().max(280);
+const loanDirection = z.enum(['lent', 'borrowed']);
+
+export const loansQuery = z.object({
+  status: z.enum(['open', 'settled', 'all']).default('open'),
+  direction: z.enum(['lent', 'borrowed', 'all']).default('all'),
+});
+
+export const createLoanBody = z.object({
+  counterparty,
+  direction: loanDirection.default('lent'),
+  amount,
+  date: dayKey,
+  dueDate: dayKey.nullish(),
+  note: note.nullish(),
+  tagId: objectId.nullish(),
+  title: title.optional(),
+});
+
+export const updateLoanBody = z
+  .object({
+    counterparty: counterparty.optional(),
+    dueDate: dayKey.nullable().optional(),
+    note: note.nullable().optional(),
+    tagId: objectId.nullable().optional(),
+    title: title.optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, {
+    message: 'Provide at least one field to update',
+  });
+
+export const repayLoanBody = z.object({
+  // Omit `amount` to settle the whole outstanding balance.
+  amount: amount.optional(),
+  // Defaults to today (UTC) when omitted.
+  date: dayKey.optional(),
+});

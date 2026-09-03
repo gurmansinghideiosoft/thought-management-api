@@ -178,10 +178,25 @@ case-insensitive name, `#rrggbb` colour). `POST /transactions` takes a batch
 (`{ transactions: [...] }`, ≤100) so a day's entries save in one call.
 `GET /transactions?from=&to=` and `GET /summary?from=&to=` are range-scoped
 (`from ≤ to`); the summary aggregates `{ totalSpending, totalEarning, net,
-count, byTag }` where `byTag` is spending-only, sorted desc, with an `Untagged`
-bucket and each row's `budget`. Deleting a tag nulls `tagId` on its
-transactions. `User.currency` (ISO 4217, default `USD`, set via
-`PATCH /api/auth/me`) is display-only.
+count, byTag, lentOutstanding, borrowedOutstanding, openLoanCount }` where
+`byTag` is spending-only, sorted desc, with an `Untagged` bucket and each row's
+`budget`. Deleting a tag nulls `tagId` on its transactions. `User.currency`
+(ISO 4217, default `USD`, set via `PATCH /api/auth/me`) is display-only.
+
+**Loans** (money lent out / borrowed) live on the `Transaction` as an embedded
+`loan` sub-doc `{ counterparty, direction: lent|borrowed, principal, status:
+open|settled, settledOn, dueDate, note, repayments[] }`, managed at `/loans`
+(`GET ?status=open|settled|all&direction=lent|borrowed|all`, `POST`,
+`PATCH /:id` for metadata only, `POST /:id/repay`, `DELETE /:id`). A `lent` loan
+books a `spending` row, `borrowed` an `earning` row; the transaction's own
+`amount` is the **current outstanding** balance (`principal` keeps the
+original). `POST /:id/repay { amount?, date? }` decrements it (omit `amount` to
+clear the balance); at zero the loan auto-settles. While open the row counts in
+`totalSpending`/`totalEarning` but never in `byTag`; once settled it's excluded
+from the summary totals too, so a repaid loan nets out entirely. `PATCH
+/transactions/:id` refuses `amount`/`kind`/`date` on a loan row (409) — use
+`/loans`. `DELETE /loans/:id` removes the whole row (it never really moved
+money).
 
 `FinanceTag.monthlyBudget` (nullable) is the per-category monthly target, set
 via the tag PATCH. **Recurring rules** (`RecurringTransaction`: `{ title,
