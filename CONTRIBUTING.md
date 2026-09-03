@@ -227,12 +227,14 @@ modes: `once` (one task shown across the whole window, completed once) or
 one document per user) is an evolving list of daily task templates; each item
 carries an `activeFrom` / `activeTo` window so edits apply from today forward
 without rewriting the past. `src/services/taskExpansion.service.ts` merges these
-into a per-day `TaskView[]`: stored rows plus **virtual** occurrences of routine
-items and `range/daily` days, generated for **today + future only** (the
-past/future boundary is `?today=YYYY-MM-DD`, default server UTC date). Acting on
-a virtual occurrence (`PUT /api/tasks/virtual/status`) materialises it into a
-real `single` row carrying `routineItemId` / `rangeTaskId`, which then shadows
-the virtual one. `GET /api/tasks` and `/api/tasks/calendar` both run through the
+into a per-day `TaskView[]`: stored rows plus **virtual** occurrences.
+`range/daily` days are generated for **today + future**; **routine** items only
+ever appear on **`today`** — a missed routine day stays missed and you can't
+tick one off ahead of time, so future calendar cells don't carry a phantom
+routine backlog. The past/future boundary is `?today=YYYY-MM-DD` (default server
+UTC date). Acting on a virtual occurrence (`PUT /api/tasks/virtual/status`)
+materialises it into a real `single` row carrying `routineItemId` /
+`rangeTaskId`, which then shadows the virtual one. `GET /api/tasks` and `/api/tasks/calendar` both run through the
 expansion, so their counts already include virtual items.
 
 ## Scripts

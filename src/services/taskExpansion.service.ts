@@ -112,7 +112,11 @@ export const expandRange = async (
   for (const day of eachDay(from, to)) {
     const future = day >= today;
 
-    if (future) {
+    // Routine items are a strictly "today" thing: a missed day stays missed and
+    // you can't tick one off ahead of time. So they only ever surface on
+    // `today` — never on past or future dates — which keeps every future
+    // calendar cell from carrying a phantom backlog badge.
+    if (day === today) {
       for (const item of activeItemsOn(routine, day)) {
         if (routineShadow.has(`${String(item._id)}::${day}`)) continue;
         if (!passes(opts, item.priority, item.tagIds)) continue;
@@ -130,7 +134,9 @@ export const expandRange = async (
           }),
         );
       }
+    }
 
+    if (future) {
       for (const r of dailyRanges) {
         if (!(r.startDate! <= day && day <= r.endDate!)) continue;
         if (rangeShadow.has(`${String(r._id)}::${day}`)) continue;

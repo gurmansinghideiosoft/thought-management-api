@@ -186,19 +186,23 @@ const TODAY = '2026-09-15';
 const addRoutineItem = (content: string, priority?: number) =>
   api().post<{ id: string }>('/api/routine/items', { content, priority });
 
-test('routine items appear as virtual tasks on today + future, not the past', async () => {
+test('routine items appear as virtual tasks on today only — not past or future', async () => {
   await addRoutineItem('stretch', 2);
   await addRoutineItem('journal');
 
-  const future = await list(`from=${TODAY}&to=2026-09-17&today=${TODAY}`);
-  const days = future.body.items.filter((t) => t.virtual);
-  assert.equal(days.length, 6); // 2 items x 3 days
-  assert.ok(days.every((t) => t.routineItemId && t.status === 'pending'));
+  const span = await list(`from=${TODAY}&to=2026-09-17&today=${TODAY}`);
+  const virtual = span.body.items.filter((t) => t.virtual);
+  assert.equal(virtual.length, 2); // 2 items, today only
+  assert.ok(virtual.every((t) => t.day === TODAY));
+  assert.ok(virtual.every((t) => t.routineItemId && t.status === 'pending'));
   // sorted by priority within a day: stretch (p2) before journal (p3)
-  assert.equal(future.body.items.filter((t) => t.day === TODAY)[0]?.content, 'stretch');
+  assert.equal(span.body.items.filter((t) => t.day === TODAY)[0]?.content, 'stretch');
 
   const past = await list(`from=2026-09-14&to=2026-09-14&today=${TODAY}`);
   assert.deepEqual(past.body.items, []);
+
+  const future = await list(`from=2026-09-16&to=2026-09-17&today=${TODAY}`);
+  assert.deepEqual(future.body.items, []);
 });
 
 test('a routine item honours its active window (retired item stops appearing)', async () => {
@@ -232,9 +236,12 @@ test('completing a virtual routine task materialises a real row and hides the vi
   assert.equal(meditate[0]?.virtual, false);
   assert.equal(meditate[0]?.status, 'done');
 
-  // still virtual on tomorrow
+  // routine tasks don't reach into tomorrow at all
   const tomorrow = await list('from=2026-09-16&to=2026-09-16&today=' + TODAY);
-  assert.equal(tomorrow.body.items.find((t) => t.content === 'meditate')?.virtual, true);
+  assert.equal(
+    tomorrow.body.items.some((t) => t.content === 'meditate'),
+    false,
+  );
 });
 
 test('removing a routine item stops it from future days but keeps materialised past ones', async () => {
@@ -330,7 +337,7 @@ test('POST /api/tasks rejects a bad range', async () => {
   );
 });
 
-test('calendar counts include virtual routine tasks on future days only', async () => {
+test('calendar counts include virtual routine tasks on today only', async () => {
   await addRoutineItem('a');
   await addRoutineItem('b');
   await makeTask({ date: '2026-09-15' }); // one stored task today
@@ -339,6 +346,6 @@ test('calendar counts include virtual routine tasks on future days only', async 
     `/api/tasks/calendar?month=2026-09&today=${TODAY}`,
   );
   assert.equal(cal.body.counts['2026-09-15']?.pending, 3); // 2 routine + 1 stored
-  assert.equal(cal.body.counts['2026-09-16']?.pending, 2); // routine only
+  assert.equal(cal.body.counts['2026-09-16'], undefined); // future: no routine badge
   assert.equal(cal.body.counts['2026-09-14'], undefined); // past: nothing
 });
